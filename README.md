@@ -11,7 +11,7 @@ A MERN expense tracker with JWT authentication, per user expenses, dashboard sum
 
 Password reset links expire after 30 minutes and can be used once. The frontend defaults to `http://localhost:5173` for reset links; set `CLIENT_URL` to the deployed frontend origin when hosting the app.
 
-For local development, the API defaults to `http://localhost:5000/api`. In Vercel, set `VITE_API_URL` to the deployed API URL ending in `/api`.
+The website backend is selected in `client/src/config/api.js`. It defaults to the local API (`http://localhost:5000/api`); set `VITE_API_TARGET=render` to use `https://spendwise-api-97wv.onrender.com/api`, or set `VITE_API_URL` to override either option. The mobile app defaults to local and accepts either backend URL through `EXPO_PUBLIC_API_URL`.
 
 ## Deploy to GitHub and Vercel
 
