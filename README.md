@@ -6,8 +6,8 @@ A MERN expense tracker with JWT authentication, per user expenses, dashboard sum
 
 1. Copy `server/.env.example` to `server/.env` and set `MONGO_URI` and `JWT_SECRET`.
 2. To enable password recovery and scheduled message emails, set `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, and optionally `SMTP_FROM` in `server/.env`. Scheduled messages are sent from your SMTP account to each recipient's email address; the server checks for due messages with `node-cron` once per minute while it is running.
-3. Start the API with `cd server && npm install && npm run dev`.
-4. Start the frontend with `cd client && npm install && npm run dev`.
+3. Install dependencies once with `npm install --prefix server`, `npm install --prefix client`, and `npm install --prefix mobile`.
+4. From the repository root, run `npm run dev` to start the API server, website, and Expo mobile app together. Press `Ctrl+C` to stop them.
 
 Password reset links expire after 30 minutes and can be used once. The frontend defaults to `http://localhost:5173` for reset links; set `CLIENT_URL` to the deployed frontend origin when hosting the app.
 
