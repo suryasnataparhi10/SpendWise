@@ -1,7 +1,7 @@
 ﻿import axios from 'axios';
-const apiBaseUrl = import.meta.env.VITE_API_URL ||
-  'https://spendwise-api-97wv.onrender.com/api';
-const api = axios.create({ baseURL: apiBaseUrl });
+import { API_BASE_URL } from '../config/api';
+
+const api = axios.create({ baseURL: API_BASE_URL });
 api.interceptors.request.use((c) => {
   const t = localStorage.getItem('token');
   if (t) c.headers.Authorization = 'Bearer ' + t;
