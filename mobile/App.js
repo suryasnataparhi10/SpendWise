@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 
-const API_URL = (process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/$/, '');
+const API_URL = (process.env.EXPO_PUBLIC_API_URL || 'https://spendwise-api-97wv.onrender.com/api').replace(/\/$/, '');
 const PAYMENT_METHODS = ['Cash', 'Navi', 'GPay', 'PhonePe', 'Paytm', 'YONO', 'ICICI', 'Overseas', 'Debit Card', 'Credit Card', 'Bank Transfer', 'Other'];
 const BRAND = '#4f6bff';
 const PALETTES = [
