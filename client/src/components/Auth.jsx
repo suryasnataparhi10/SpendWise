@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { authenticate, requestPasswordReset, resetPassword } from '../state/store';
+import PasswordInput from './PasswordInput';
 
 const copy = {
   login: {
@@ -142,6 +143,11 @@ export default function Auth({ mode }) {
 
   return (
     <div className="auth-page">
+      <div className="ambient-scene" aria-hidden="true">
+        <span className="ambient-orb ambient-orb-one" />
+        <span className="ambient-orb ambient-orb-two" />
+        <span className="ambient-orb ambient-orb-three" />
+      </div>
       <Story />
       <section className="auth-form-wrap">
         <div className="auth-mobile-brand">
@@ -182,9 +188,8 @@ export default function Auth({ mode }) {
           {(mode === 'login' || mode === 'register' || mode === 'reset') && (
             <label>
               {mode === 'reset' ? 'New password' : 'Password'}
-              <input
+              <PasswordInput
                 className="form-control"
-                type="password"
                 placeholder="At least 6 characters"
                 value={form.password}
                 onChange={update('password')}
@@ -197,9 +202,8 @@ export default function Auth({ mode }) {
           {mode === 'reset' && (
             <label>
               Confirm password
-              <input
+              <PasswordInput
                 className="form-control"
-                type="password"
                 placeholder="Enter your new password again"
                 value={form.confirm}
                 onChange={update('confirm')}

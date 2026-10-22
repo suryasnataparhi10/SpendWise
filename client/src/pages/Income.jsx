@@ -4,6 +4,7 @@ import { addIncome, fetchIncome, fetchSummary, removeIncome, removeIncomes } fro
 import { inr, today, fmtDate } from '../utils';
 import CalendarInput from '../components/CalendarInput';
 import AmountInput from '../components/AmountInput';
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 
 const emptyForm = () => ({ source: '', amount: '', date: today() });
 
@@ -16,6 +17,7 @@ export default function Income() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [selectedIncomeIds, setSelectedIncomeIds] = useState(() => new Set());
+  const [deleteConfirmation, setDeleteConfirmation] = useState(null);
 
   const load = () => {
     const params = { year: month.slice(0, 4), month: Number(month.slice(5)) };
@@ -30,22 +32,28 @@ export default function Income() {
   const total = (entries || []).reduce((sum, entry) => sum + Number(entry.amount), 0);
   const summaryMatchesMonth =
     summary?.month === Number(month.slice(5)) && summary?.year === Number(month.slice(0, 4));
+  const openingBalance = summaryMatchesMonth ? Number(summary.openingBalance || 0) : 0;
   const monthExpenses = summaryMatchesMonth ? Number(summary.totalMonthExpense || 0) : 0;
-  const remaining = total - monthExpenses;
+  const availableFunds = openingBalance + total;
+  const remaining = availableFunds - monthExpenses;
   const allIncomeSelected =
     Boolean(entries?.length) && entries.every((entry) => selectedIncomeIds.has(entry._id));
   const deleteSelectedIncome = async () => {
     const ids = [...selectedIncomeIds];
-    if (
-      !ids.length ||
-      !window.confirm(`Delete ${ids.length} selected income entr${ids.length === 1 ? 'y' : 'ies'}?`)
-    )
-      return;
-    try {
-      await dispatch(removeIncomes(ids)).unwrap();
-      setSelectedIncomeIds(new Set());
-      load();
-    } catch {}
+    if (!ids.length) return;
+    setDeleteConfirmation({
+      title: `Delete ${ids.length} selected income entr${ids.length === 1 ? 'y' : 'ies'}?`,
+      description: 'This will remove the selected entries from your income history.',
+      confirmLabel: 'Delete income',
+      onConfirm: async () => {
+        try {
+          await dispatch(removeIncomes(ids)).unwrap();
+          setSelectedIncomeIds(new Set());
+          load();
+        } catch {}
+        setDeleteConfirmation(null);
+      },
+    });
   };
   const submit = async (event) => {
     event.preventDefault();
@@ -64,17 +72,27 @@ export default function Income() {
 
   return (
     <>
-      <div className="page-heading">
+      <div className="page-heading section-hero">
         <div>
           <span className="eyebrow">MONEY COMING IN</span>
           <h1>Income</h1>
           <p className="muted">Track pay, freelance income, and other money received.</p>
         </div>
       </div>
-      <section className="income-balance-strip" aria-label="Monthly income balance after expenses">
+      <section className="income-balance-strip section-feature-panel" aria-label="Monthly available balance after expenses">
         <div>
-          <small>INCOME</small>
+          <small>PREVIOUS BALANCE</small>
+          <b>{inr(openingBalance)}</b>
+        </div>
+        <span className="income-plus" aria-hidden="true">+</span>
+        <div>
+          <small>INCOME THIS MONTH</small>
           <b>{inr(total)}</b>
+        </div>
+        <span className="income-equals" aria-hidden="true">=</span>
+        <div className="income-available">
+          <small>AVAILABLE THIS MONTH</small>
+          <b>{inr(availableFunds)}</b>
         </div>
         <span className="income-minus" aria-hidden="true">
           −
@@ -90,10 +108,10 @@ export default function Income() {
           <small>REMAINING</small>
           <b>{inr(remaining)}</b>
         </div>
-        <p>Every expense recorded for this month is subtracted from your income automatically.</p>
+        <p>Last month's remaining balance carries forward. This month's expenses are deducted from the available total.</p>
       </section>
       <div className="finance-columns">
-        <section className="panel finance-form-panel">
+        <section className="panel finance-form-panel section-panel">
           <div className="panel-heading">
             <div>
               <span className="eyebrow">NEW ENTRY</span>
@@ -140,7 +158,7 @@ export default function Income() {
           </form>
         </section>
 
-        <section className="panel finance-list-panel">
+        <section className="panel finance-list-panel section-panel">
           <div className="finance-list-heading">
             <div>
               <span className="eyebrow">MONTHLY INCOME</span>
@@ -211,18 +229,24 @@ export default function Income() {
                   <button
                     className="icon-button danger"
                     aria-label="Delete income"
-                    onClick={() =>
-                      dispatch(removeIncome(entry._id))
-                        .unwrap()
-                        .then(() => {
-                          setSelectedIncomeIds((current) => {
-                            const next = new Set(current);
-                            next.delete(entry._id);
-                            return next;
-                          });
-                          load();
-                        })
-                    }
+                    onClick={() => setDeleteConfirmation({
+                      title: 'Delete this income entry?',
+                      description: 'This will remove it from your income history.',
+                      confirmLabel: 'Delete income',
+                      onConfirm: () =>
+                        dispatch(removeIncome(entry._id))
+                          .unwrap()
+                          .then(() => {
+                            setDeleteConfirmation(null);
+                            setSelectedIncomeIds((current) => {
+                              const next = new Set(current);
+                              next.delete(entry._id);
+                              return next;
+                            });
+                            load();
+                          })
+                          .catch(() => setDeleteConfirmation(null)),
+                    })}
                   >
                     <i className="bi bi-trash3" />
                   </button>
@@ -237,6 +261,11 @@ export default function Income() {
           )}
         </section>
       </div>
+      <ConfirmDeleteModal
+        open={Boolean(deleteConfirmation)}
+        {...deleteConfirmation}
+        onCancel={() => setDeleteConfirmation(null)}
+      />
     </>
   );
 }

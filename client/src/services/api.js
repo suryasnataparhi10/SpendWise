@@ -1,5 +1,7 @@
 ﻿import axios from 'axios';
-const api = axios.create({ baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api' });
+const apiBaseUrl = import.meta.env.VITE_API_URL ||
+  (import.meta.env.DEV ? 'http://localhost:5000/api' : '/api');
+const api = axios.create({ baseURL: apiBaseUrl });
 api.interceptors.request.use((c) => {
   const t = localStorage.getItem('token');
   if (t) c.headers.Authorization = 'Bearer ' + t;
@@ -10,3 +12,4 @@ api.interceptors.response.use(
   (e) => Promise.reject(e.response?.data?.message || 'Network error, is the server running?'),
 );
 export default api;
+

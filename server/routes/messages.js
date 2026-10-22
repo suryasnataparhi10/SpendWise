@@ -9,16 +9,6 @@ router.use(auth);
 router.get('/status', (req, res) => {
   ok(res, {
     emailConfigured: Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS),
-    smsConfigured: Boolean(
-      process.env.TWILIO_ACCOUNT_SID &&
-      process.env.TWILIO_AUTH_TOKEN &&
-      process.env.TWILIO_SMS_FROM,
-    ),
-    whatsappConfigured: Boolean(
-      process.env.TWILIO_ACCOUNT_SID &&
-      process.env.TWILIO_AUTH_TOKEN &&
-      process.env.TWILIO_WHATSAPP_FROM,
-    ),
   });
 });
 
@@ -27,7 +17,7 @@ router.get(
   wrap(async (req, res) => {
     ok(
       res,
-      await ScheduledMessage.find({ userId: req.uid }).sort({
+      await ScheduledMessage.find({ userId: req.uid, channel: 'email' }).sort({
         active: -1,
         nextSendAt: 1,
         createdAt: -1,
@@ -40,28 +30,23 @@ router.post(
   '/',
   wrap(async (req, res) => {
     const contactName = String(req.body.contactName || '').trim();
-    const phone = String(req.body.phone || '').trim();
     const email = String(req.body.email || '').trim().toLowerCase();
     const message = String(req.body.message || '').trim();
     const scheduledAt = new Date(req.body.scheduledAt);
     const frequency = String(req.body.frequency || 'once');
-    const channel = String(req.body.channel || 'email');
+    const channel = 'email';
     const timeZone = String(req.body.timeZone || 'Asia/Kolkata');
     const intervalDays = Number(req.body.intervalDays);
     const endAt = req.body.endAt ? new Date(req.body.endAt) : undefined;
-    const destinationValid = channel === 'email' ? /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) : /^\+[1-9]\d{7,14}$/.test(phone);
-    if (!contactName || !destinationValid || !message || message.length > 1500)
+    if (!contactName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !message || message.length > 1500)
       throw fail(
         400,
-        'Enter a contact name, a valid destination, and a message under 1500 characters',
+        'Enter a contact name, a valid email address, and a message under 1500 characters',
       );
-    if (req.body.recipientConsented !== true)
-      throw fail(400, 'Confirm that the recipient agreed to receive messages');
     if (!Number.isFinite(scheduledAt.getTime()) || scheduledAt <= new Date())
       throw fail(400, 'Choose a future send date and time');
     if (!['once', 'daily', 'weekly', 'monthly', 'custom'].includes(frequency))
       throw fail(400, 'Choose a valid repeat schedule');
-    if (!['email', 'sms', 'whatsapp'].includes(channel)) throw fail(400, 'Choose Email, SMS, or WhatsApp');
     try {
       new Intl.DateTimeFormat('en-US', { timeZone }).format();
     } catch {
@@ -77,7 +62,7 @@ router.post(
     const created = await ScheduledMessage.create({
       userId: req.uid,
       contactName,
-      ...(channel === 'email' ? { email } : { phone }),
+      email,
       channel,
       messageType: req.body.messageType || 'greeting',
       message,
@@ -97,32 +82,28 @@ router.put(
   '/:id',
   wrap(async (req, res) => {
     const contactName = String(req.body.contactName || '').trim();
-    const phone = String(req.body.phone || '').trim();
     const email = String(req.body.email || '').trim().toLowerCase();
     const messageText = String(req.body.message || '').trim();
     const scheduledAt = new Date(req.body.scheduledAt);
     const frequency = String(req.body.frequency || 'once');
-    const channel = String(req.body.channel || 'email');
+    const channel = 'email';
     const timeZone = String(req.body.timeZone || 'Asia/Kolkata');
     const intervalDays = Number(req.body.intervalDays);
     const endAt = req.body.endAt ? new Date(req.body.endAt) : undefined;
     if (
       !contactName ||
-      !(channel === 'email' ? /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) : /^\+[1-9]\d{7,14}$/.test(phone)) ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
       !messageText ||
       messageText.length > 1500
     )
       throw fail(
         400,
-        'Enter a contact name, a valid destination, and a message under 1500 characters',
+        'Enter a contact name, a valid email address, and a message under 1500 characters',
       );
-    if (req.body.recipientConsented !== true)
-      throw fail(400, 'Confirm that the recipient agreed to receive messages');
     if (!Number.isFinite(scheduledAt.getTime()) || scheduledAt <= new Date())
       throw fail(400, 'Choose a future send date and time');
     if (!['once', 'daily', 'weekly', 'monthly', 'custom'].includes(frequency))
       throw fail(400, 'Choose a valid repeat schedule');
-    if (!['email', 'sms', 'whatsapp'].includes(channel)) throw fail(400, 'Choose Email, SMS, or WhatsApp');
     try {
       new Intl.DateTimeFormat('en-US', { timeZone }).format();
     } catch {
@@ -137,7 +118,7 @@ router.put(
       throw fail(400, 'End date must be after the first send');
     const changes = {
       contactName,
-      ...(channel === 'email' ? { email } : { phone }),
+      email,
       recipientConsented: true,
       channel,
       messageType: req.body.messageType || 'greeting',
@@ -160,7 +141,6 @@ router.put(
         $unset: {
           ...(!endAt ? { endAt: 1 } : {}),
           ...(frequency !== 'custom' ? { intervalDays: 1 } : {}),
-          ...(channel === 'email' ? { phone: 1 } : { email: 1 }),
         },
       },
       { new: true, runValidators: true },

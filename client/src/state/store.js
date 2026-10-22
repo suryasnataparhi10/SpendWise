@@ -16,8 +16,24 @@ export const resetPassword = th('auth/reset', (payload) =>
   api.post('/auth/reset-password', payload),
 );
 export const loadMe = th('auth/me', () => api.get('/auth/me'));
+export const updateProfile = th('auth/profile', (profile) => api.patch('/auth/profile', profile));
 export const fetchSummary = th('dash/get', (p) => api.get('/dashboard/summary', { params: p }));
-export const fetchExpenses = th('exp/list', (p) => api.get('/expenses', { params: p }));
+export const fetchExpenses = th('exp/list', ({ params, hiddenToken }) =>
+  api.get('/expenses', { params, headers: hiddenToken ? { 'x-hidden-expense-token': hiddenToken } : {} }),
+);
+export const fetchExpenseInsights = th('exp/insights', (params) =>
+  api.get('/expenses/insights', { params }),
+);
+export const getHiddenExpenseKeyStatus = th('exp/keyStatus', () => api.post('/expenses/lock-key/status'));
+export const setHiddenExpenseKey = th('exp/keySet', (key) => api.post('/expenses/lock-key/set', { key }));
+export const unlockHiddenExpenses = th('exp/keyUnlock', (key) => api.post('/expenses/lock-key/unlock', { key }));
+export const changeHiddenExpenseKey = th('exp/keyChange', ({ currentKey, newKey }) =>
+  api.post('/expenses/lock-key/change', { currentKey, newKey }),
+);
+export const requestHiddenExpenseOtp = th('exp/keyResetLink', () => api.post('/expenses/lock-key/request-link'));
+export const resetHiddenExpenseKey = th('exp/keyResetByLink', ({ token, key }) =>
+  api.post('/expenses/lock-key/reset-link', { token, key }),
+);
 export const saveExpense = th('exp/save', (e) =>
   e._id ? api.put('/expenses/' + e._id, e) : api.post('/expenses', e),
 );
@@ -27,6 +43,9 @@ export const saveExpenses = th('exp/saveMany', (expenses) =>
 export const removeExpense = th('exp/del', (id) => api.delete('/expenses/' + id));
 export const removeExpenses = th('exp/delMany', (ids) =>
   api.delete('/expenses/bulk', { data: { ids } }),
+);
+export const setExpensesLocked = th('exp/lockMany', ({ ids, isLocked }) =>
+  api.patch('/expenses/bulk/lock', { ids, isLocked }),
 );
 export const fetchIncome = th('income/list', (params) => api.get('/income', { params }));
 export const addIncome = th('income/add', (entry) => api.post('/income', entry));
@@ -84,6 +103,9 @@ const auth = createSlice({
       .addCase(loadMe.fulfilled, (s, { payload }) => {
         s.user = payload;
       })
+      .addCase(updateProfile.fulfilled, (s, { payload }) => {
+        s.user = payload;
+      })
       .addCase(loadMe.rejected, (s) => {
         s.token = null;
         localStorage.removeItem('token');
@@ -91,12 +113,36 @@ const auth = createSlice({
 });
 const theme = createSlice({
   name: 'theme',
-  initialState: localStorage.getItem('theme') || 'light',
+  initialState: localStorage.getItem('theme') ||
+    (document.documentElement.dataset.colorTheme === 'midnight-mint' ? 'dark' : 'light'),
   reducers: {
     toggleTheme: (s) => {
       const n = s === 'light' ? 'dark' : 'light';
       localStorage.setItem('theme', n);
       return n;
+    },
+  },
+});
+const colorTheme = createSlice({
+  name: 'colorTheme',
+  initialState: localStorage.getItem('colorTheme') || document.documentElement.dataset.colorTheme || 'midnight-mint',
+  reducers: {
+    setColorTheme: (_state, { payload }) => {
+      localStorage.setItem('colorTheme', payload);
+      return payload;
+    },
+  },
+});
+const customAccent = createSlice({
+  name: 'customAccent',
+  initialState: /^#[\da-f]{6}$/i.test(localStorage.getItem('customAccent') || '')
+    ? localStorage.getItem('customAccent')
+    : '#7c6ee8',
+  reducers: {
+    setCustomAccent: (_state, { payload }) => {
+      const color = /^#[\da-f]{6}$/i.test(payload) ? payload : '#7c6ee8';
+      localStorage.setItem('customAccent', color);
+      return color;
     },
   },
 });
@@ -161,14 +207,19 @@ const data = (name, t) =>
   }).reducer;
 export const { logout } = auth.actions;
 export const { toggleTheme } = theme.actions;
+export const { setColorTheme } = colorTheme.actions;
+export const { setCustomAccent } = customAccent.actions;
 export const { clearMsg } = ui.actions;
 export default configureStore({
   reducer: {
     auth: auth.reducer,
     theme: theme.reducer,
+    colorTheme: colorTheme.reducer,
+    customAccent: customAccent.reducer,
     ui: ui.reducer,
     dash: data('dash', fetchSummary),
     exp: data('exp', fetchExpenses),
+    expenseInsights: data('expenseInsights', fetchExpenseInsights),
     income: data('income', fetchIncome),
     budgets: data('budgets', fetchBudgets),
     reminders: data('reminders', fetchReminders),

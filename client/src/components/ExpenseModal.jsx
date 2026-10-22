@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useDispatch } from 'react-redux';
 import { saveExpense, saveExpenses } from '../state/store';
 import api from '../services/api';
@@ -30,11 +31,10 @@ const blankRow = () => ({
 export default function ExpenseModal({ item, onClose, onSaved, history = [] }) {
   const dispatch = useDispatch(),
     editing = Boolean(item._id),
-    [date, setDate] = useState((item.date || today()).slice(0, 10)),
     [note, setNote] = useState(''),
     [globalSuggestions, setGlobalSuggestions] = useState({ items: [], subtypes: [] });
-  const [rows, setRows] = useState([
-      {
+  const [groups, setGroups] = useState([
+      { date: (item.date || today()).slice(0, 10), rows: [{
         item: item.item ?? item.description ?? '',
         amount: item.amount ?? '',
         paymentMethod: item.paymentMethod || 'Cash',
@@ -44,10 +44,12 @@ export default function ExpenseModal({ item, onClose, onSaved, history = [] }) {
           ? item.subtypes
           : [{ type: '', amount: '', paymentMethod: 'Cash' }],
         expanded: true,
-      },
+      }] },
     ]),
+    [activeGroup, setActiveGroup] = useState(0),
     [errors, setErrors] = useState({}),
     [saving, setSaving] = useState(false);
+  const rows = groups[activeGroup]?.rows || [];
   useEffect(() => {
     api
       .get('/expenses/suggestions')
@@ -55,20 +57,15 @@ export default function ExpenseModal({ item, onClose, onSaved, history = [] }) {
       .catch(() => {});
   }, []);
   const update = (index, key, value) =>
-    setRows((old) => old.map((row, i) => (i === index ? { ...row, [key]: value } : row)));
+    setGroups((old) => old.map((group, groupIndex) => groupIndex === activeGroup
+      ? { ...group, rows: group.rows.map((row, i) => (i === index ? { ...row, [key]: value } : row)) }
+      : group));
   const updateSubtype = (index, subIndex, key, value) =>
-    setRows((old) =>
-      old.map((row, i) =>
-        i === index
-          ? {
-              ...row,
-              subtypes: row.subtypes.map((sub, j) =>
-                j === subIndex ? { ...sub, [key]: value } : sub,
-              ),
-            }
-          : row,
-      ),
-    );
+    setGroups((old) => old.map((group, groupIndex) => groupIndex === activeGroup
+      ? { ...group, rows: group.rows.map((row, i) => i === index
+        ? { ...row, subtypes: row.subtypes.map((sub, j) => j === subIndex ? { ...sub, [key]: value } : sub) }
+        : row) }
+      : group));
   const knownItems = [
     ...new Set(
       [
@@ -88,24 +85,34 @@ export default function ExpenseModal({ item, onClose, onSaved, history = [] }) {
   const submit = async (event) => {
     event.preventDefault();
     const next = {};
-    if (!date) next.date = 'Date is required';
-    rows.forEach((row, i) => {
-      if (!row.item.trim()) next[`item-${i}`] = 'Enter an item';
+    const totalCount = groups.reduce((sum, group) => sum + group.rows.length, 0);
+    if (totalCount > 100)
+      next.dates = 'You can save up to 100 expenses at a time';
+    groups.forEach((group, groupIndex) => {
+      if (!group.date) next[`date-${groupIndex}`] = 'Date is required';
+      group.rows.forEach((row, i) => {
+      const key = `${groupIndex}-${i}`;
+      if (!row.item.trim()) next[`item-${key}`] = 'Enter an item';
       if (!row.hasSubtypes && (!Number.isFinite(Number(row.amount)) || Number(row.amount) <= 0))
-        next[`amount-${i}`] = 'Enter an amount greater than zero';
+        next[`amount-${key}`] = 'Enter an amount greater than zero';
       if (row.hasSubtypes) {
-        if (!row.subtypes.length) next[`subtypes-${i}`] = 'Add at least one subtype';
+        if (!row.subtypes.length) next[`subtypes-${key}`] = 'Add at least one subtype';
         row.subtypes.forEach((sub, j) => {
-          if (!sub.type.trim()) next[`subtype-type-${i}-${j}`] = 'Enter a subtype';
+          if (!sub.type.trim()) next[`subtype-type-${key}-${j}`] = 'Enter a subtype';
           if (!Number.isFinite(Number(sub.amount)) || Number(sub.amount) <= 0)
-            next[`subtype-amount-${i}-${j}`] = 'Enter an amount greater than zero';
+            next[`subtype-amount-${key}-${j}`] = 'Enter an amount greater than zero';
         });
       }
+      });
     });
     setErrors(next);
-    if (Object.keys(next).length) return;
-    const records = rows.map((row) => ({
-      date,
+    const firstInvalidGroup = groups.findIndex((group, groupIndex) => Object.keys(next).some((key) => key.startsWith(`date-${groupIndex}`) || key.includes(`-${groupIndex}-`)));
+    if (Object.keys(next).length) {
+      if (firstInvalidGroup >= 0) setActiveGroup(firstInvalidGroup);
+      return;
+    }
+    const records = groups.flatMap((group) => group.rows.map((row) => ({
+      date: group.date,
       amount: row.hasSubtypes
         ? row.subtypes.reduce((sum, sub) => sum + Number(sub.amount), 0)
         : Number(row.amount),
@@ -117,10 +124,11 @@ export default function ExpenseModal({ item, onClose, onSaved, history = [] }) {
         ? row.subtypes.map((sub) => ({ ...sub, type: sub.type.trim(), amount: Number(sub.amount) }))
         : [],
       paymentMethod: row.paymentMethod,
-    }));
+    })));
     setSaving(true);
     try {
-      if (editing) await dispatch(saveExpense({ ...records[0], _id: item._id })).unwrap();
+      if (editing)
+        await dispatch(saveExpense({ ...records[0], _id: item._id, isLocked: Boolean(item.isLocked) })).unwrap();
       else await dispatch(saveExpenses(records)).unwrap();
       onSaved();
       onClose();
@@ -129,7 +137,7 @@ export default function ExpenseModal({ item, onClose, onSaved, history = [] }) {
       setSaving(false);
     }
   };
-  return (
+  return createPortal(
     <div className="modal d-block modal-backdrop-custom">
       <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl">
         <form className="modal-content expense-modal" onSubmit={submit}>
@@ -141,23 +149,41 @@ export default function ExpenseModal({ item, onClose, onSaved, history = [] }) {
             <button type="button" className="btn-close" onClick={onClose} />
           </div>
           <div className="modal-body">
+            {!editing && <div className="date-batch-selector mb-3">
+              <div className="d-flex flex-wrap gap-2 align-items-center">
+                {groups.map((group, index) => (
+                  <button key={index} type="button" className={`btn ${activeGroup === index ? 'btn-primary' : 'btn-light'}`} onClick={() => setActiveGroup(index)}>
+                    {group.date ? new Date(`${group.date}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : `Date ${index + 1}`}
+                    <span className="ms-2 badge text-bg-light">{group.rows.length}</span>
+                  </button>
+                ))}
+                <button type="button" className="btn btn-light" onClick={() => {
+                  const nextGroup = { date: today(), rows: [blankRow()] };
+                  setGroups((old) => [...old, nextGroup]);
+                  setActiveGroup(groups.length);
+                }}>
+                  <i className="bi bi-plus-lg me-1" /> Add expenses for another date
+                </button>
+              </div>
+            </div>}
             <div className="row g-3 mb-3">
               <div className="col-md-6">
-                <ExpenseField field="expense-date" label="Date" error={errors.date}>
-                  <CalendarInput
-                    id="expense-date"
-                    type="date"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                  />
+                <ExpenseField field={`expense-date-${activeGroup}`} label="Date" error={errors[`date-${activeGroup}`]}>
+                  <CalendarInput id={`expense-date-${activeGroup}`} type="date" value={groups[activeGroup]?.date || ''} onChange={(e) => setGroups((old) => old.map((group, index) => index === activeGroup ? { ...group, date: e.target.value } : group))} />
                 </ExpenseField>
               </div>
+              {!editing && groups.length > 1 && <div className="col-md-6 d-flex align-items-end">
+                <button type="button" className="btn btn-light text-danger" onClick={() => {
+                  setGroups((old) => old.filter((_, index) => index !== activeGroup));
+                  setActiveGroup((index) => Math.max(0, index - 1));
+                }}><i className="bi bi-trash3 me-1" /> Remove this date</button>
+              </div>}
             </div>
             <div className="batch-title">
               <div>
                 <b>{editing ? 'Item' : 'Items'}</b>
                 <small>
-                  {editing ? 'Update this expense' : 'Add every item for this day before saving'}
+                  {editing ? 'Update this expense' : 'Add items for this date, then add another date to enter more expenses.'}
                 </small>
               </div>
             </div>
@@ -169,7 +195,7 @@ export default function ExpenseModal({ item, onClose, onSaved, history = [] }) {
                     <ExpenseField
                       field={`expense-item-${index}`}
                       label="Item"
-                      error={errors[`item-${index}`]}
+                      error={errors[`item-${activeGroup}-${index}`]}
                     >
                       <input
                         id={`expense-item-${index}`}
@@ -268,11 +294,11 @@ export default function ExpenseModal({ item, onClose, onSaved, history = [] }) {
                               >
                                 <i className="bi bi-x-lg" />
                               </button>
-                              {(errors[`subtype-type-${index}-${subIndex}`] ||
-                                errors[`subtype-amount-${index}-${subIndex}`]) && (
+                              {(errors[`subtype-type-${activeGroup}-${index}-${subIndex}`] ||
+                                errors[`subtype-amount-${activeGroup}-${index}-${subIndex}`]) && (
                                 <small className="text-danger">
-                                  {errors[`subtype-type-${index}-${subIndex}`] ||
-                                    errors[`subtype-amount-${index}-${subIndex}`]}
+                                  {errors[`subtype-type-${activeGroup}-${index}-${subIndex}`] ||
+                                    errors[`subtype-amount-${activeGroup}-${index}-${subIndex}`]}
                                 </small>
                               )}
                             </div>
@@ -298,7 +324,7 @@ export default function ExpenseModal({ item, onClose, onSaved, history = [] }) {
                         <ExpenseField
                           field={`expense-amount-${index}`}
                           label="Amount"
-                          error={errors[`amount-${index}`]}
+                          error={errors[`amount-${activeGroup}-${index}`]}
                         >
                           <div className="input-group">
                             <span className="input-group-text">₹</span>
@@ -331,7 +357,7 @@ export default function ExpenseModal({ item, onClose, onSaved, history = [] }) {
                       type="button"
                       className="batch-remove"
                       aria-label="Remove item"
-                      onClick={() => setRows((old) => old.filter((_, i) => i !== index))}
+                      onClick={() => setGroups((old) => old.map((group, groupIndex) => groupIndex === activeGroup ? { ...group, rows: group.rows.filter((_, i) => i !== index) } : group))}
                     >
                       <i className="bi bi-x-lg" />
                     </button>
@@ -339,11 +365,12 @@ export default function ExpenseModal({ item, onClose, onSaved, history = [] }) {
                 </div>
               ))}
             </div>
+            {errors.dates && <div className="text-danger small mt-2">{errors.dates}</div>}
             {!editing && (
               <button
                 type="button"
                 className="add-item-bottom"
-                onClick={() => setRows((old) => [...old, blankRow()])}
+                onClick={() => setGroups((old) => old.map((group, groupIndex) => groupIndex === activeGroup ? { ...group, rows: [...group.rows, blankRow()] } : group))}
               >
                 <i className="bi bi-plus-circle me-2" />
                 Add another item
@@ -363,8 +390,8 @@ export default function ExpenseModal({ item, onClose, onSaved, history = [] }) {
           </div>
           <div className="modal-footer">
             <span className="batch-total">
-              {rows.length} {rows.length === 1 ? 'item' : 'items'} ·{' '}
-              {rows
+              {groups.reduce((sum, group) => sum + group.rows.length, 0)} {groups.reduce((sum, group) => sum + group.rows.length, 0) === 1 ? 'expense' : 'expenses'} ·{' '}
+              {groups.flatMap((group) => group.rows)
                 .reduce(
                   (total, row) =>
                     total +
@@ -387,11 +414,12 @@ export default function ExpenseModal({ item, onClose, onSaved, history = [] }) {
                 ? 'Saving…'
                 : editing
                   ? 'Save changes'
-                  : `Save ${rows.length === 1 ? 'expense' : 'expenses'}`}
+                  : `Save ${groups.reduce((sum, group) => sum + group.rows.length, 0)} ${groups.reduce((sum, group) => sum + group.rows.length, 0) === 1 ? 'expense' : 'expenses'}`}
             </button>
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

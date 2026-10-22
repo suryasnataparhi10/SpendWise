@@ -16,6 +16,7 @@ router.get(
       {
         $match: {
           userId: req.uid,
+          isLocked: { $ne: true },
           date: { $gte: new Date(Date.UTC(year, 0, 1)), $lt: new Date(Date.UTC(year + 1, 0, 1)) },
         },
       },

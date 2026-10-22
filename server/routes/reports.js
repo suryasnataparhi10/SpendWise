@@ -14,7 +14,7 @@ router.get(
     const range = { $gte: new Date(Date.UTC(year, 0, 1)), $lt: new Date(Date.UTC(year + 1, 0, 1)) };
     const [expenseRows, incomeRows] = await Promise.all([
       Expense.aggregate([
-        { $match: { userId: req.uid, date: range } },
+        { $match: { userId: req.uid, isLocked: { $ne: true }, date: range } },
         { $group: { _id: { $month: '$date' }, total: { $sum: '$amount' } } },
       ]),
       Income.aggregate([

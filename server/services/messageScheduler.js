@@ -1,47 +1,31 @@
 const ScheduledMessage = require('../models/ScheduledMessage');
+const cron = require('node-cron');
 
-const ready = (channel) => channel === 'email'
-  ? Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)
-  : Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && (channel === 'whatsapp' ? process.env.TWILIO_WHATSAPP_FROM : process.env.TWILIO_SMS_FROM));
+const emailReady = () => Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 
 async function send(message) {
-  if (message.channel === 'email') {
-    const nodemailer = require('nodemailer');
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT || 587),
-      secure: String(process.env.SMTP_SECURE || 'false') === 'true',
-      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-    });
-    await transporter.sendMail({
-      from: process.env.SMTP_FROM || process.env.SMTP_USER,
-      to: message.email,
-      subject: `A message for ${message.contactName}`,
-      text: message.message,
-    });
-    return;
+  const nodemailer = require('nodemailer');
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT || 587),
+    secure: String(process.env.SMTP_SECURE || 'false') === 'true',
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  });
+  const result = await transporter.sendMail({
+    from: process.env.SMTP_FROM || process.env.SMTP_USER,
+    to: message.email,
+    subject: `A message for ${message.contactName}`,
+    text: message.message,
+  });
+  const recipientAccepted = (result.accepted || []).some((entry) => {
+    const address = typeof entry === 'string' ? entry : entry?.address;
+    return String(address || '').toLowerCase() === String(message.email || '').toLowerCase();
+  });
+  if (!recipientAccepted) {
+    const rejection = result.rejectedErrors?.[0]?.message || result.response || 'SMTP server did not accept the recipient';
+    throw new Error(rejection);
   }
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const from =
-    message.channel === 'whatsapp' ? process.env.TWILIO_WHATSAPP_FROM : process.env.TWILIO_SMS_FROM;
-  if (!from) throw new Error(`Twilio ${message.channel} sender is not configured`);
-  const to = message.channel === 'whatsapp' ? `whatsapp:${message.phone}` : message.phone;
-  const body =
-    message.channel === 'whatsapp' && !from.startsWith('whatsapp:') ? `whatsapp:${from}` : from;
-  const response = await fetch(
-    `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({ To: to, From: body, Body: message.message }),
-    },
-  );
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.message || 'Twilio could not deliver the message');
+  return { messageId: result.messageId, response: result.response };
 }
 
 function zonedParts(date, timeZone) {
@@ -110,14 +94,13 @@ function nextOccurrence(message, from) {
 }
 
 async function sendDueMessages() {
+  if (!emailReady()) return;
   for (let count = 0; count < 25; count++) {
     const now = new Date();
-    const configuredChannels = ['email', 'sms', 'whatsapp'].filter(ready);
-    if (!configuredChannels.length) return;
     const message = await ScheduledMessage.findOneAndUpdate(
       {
         active: true,
-        channel: { $in: configuredChannels },
+        channel: 'email',
         nextSendAt: { $lte: now },
         $or: [{ lockedAt: null }, { lockedAt: { $lt: new Date(now.getTime() - 10 * 60 * 1000) } }],
       },
@@ -161,8 +144,7 @@ function startMessageScheduler() {
   const poll = () =>
     sendDueMessages().catch((error) => console.error('Message scheduler failed:', error));
   poll();
-  const timer = setInterval(poll, 30 * 1000);
-  timer.unref?.();
+  return cron.schedule('* * * * *', poll, { noOverlap: true });
 }
 
-module.exports = { startMessageScheduler };
+module.exports = { startMessageScheduler, sendDueMessages };

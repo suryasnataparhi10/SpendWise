@@ -6,10 +6,9 @@ module.exports = model(
     {
       userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
       contactName: { type: String, trim: true, required: true },
-      phone: { type: String, trim: true },
       email: { type: String, trim: true, lowercase: true },
       recipientConsented: { type: Boolean, required: true, default: false },
-      channel: { type: String, enum: ['email', 'sms', 'whatsapp'], default: 'email' },
+      channel: { type: String, enum: ['email'], default: 'email' },
       messageType: {
         type: String,
         enum: ['love', 'greeting', 'celebration', 'custom'],

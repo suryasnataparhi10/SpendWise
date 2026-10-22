@@ -8,6 +8,7 @@ mobile/.env
 
 # Installed dependencies and generated output
 **/node_modules/
+.vercel/
 client/dist/
 mobile/.expo/
 mobile/dist/

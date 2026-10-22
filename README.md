@@ -5,28 +5,27 @@ A MERN expense tracker with JWT authentication, per user expenses, dashboard sum
 ## Run locally
 
 1. Copy `server/.env.example` to `server/.env` and set `MONGO_URI` and `JWT_SECRET`.
-2. To enable password recovery emails, also set `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, and optionally `SMTP_FROM` in `server/.env`.
+2. To enable password recovery and scheduled message emails, set `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, and optionally `SMTP_FROM` in `server/.env`. Scheduled messages are sent from your SMTP account to each recipient's email address; the server checks for due messages with `node-cron` once per minute while it is running.
 3. Start the API with `cd server && npm install && npm run dev`.
 4. Start the frontend with `cd client && npm install && npm run dev`.
 
 Password reset links expire after 30 minutes and can be used once. The frontend defaults to `http://localhost:5173` for reset links; set `CLIENT_URL` to the deployed frontend origin when hosting the app.
 
-Set `VITE_API_URL` in the client environment to override the default API origin (`http://localhost:5000/api`).
+For local development, the API defaults to `http://localhost:5000/api`. In Vercel, set `VITE_API_URL` to the deployed API URL ending in `/api`.
 
-## Deploy the website
+## Deploy to GitHub and Vercel
 
-GitHub Pages hosts the frontend. The Express API needs a running web service, and MongoDB needs a cloud connection string; GitHub Pages cannot run the API process or database.
+GitHub stores the source code. Vercel hosts the React website and Express API, while MongoDB Atlas stores the online data. The Vercel configuration is split into two projects because the client and API have separate build roots.
 
-1. Push the project to the repository's `main` branch. `.gitignore` excludes `.env` files and local dependencies; do not commit credentials.
-2. Create a MongoDB Atlas database and copy its connection string. In Render, create a Blueprint from this repository's `render.yaml`; set `MONGO_URI` to the Atlas connection string and `CLIENT_URL` to the full website URL, such as `https://<github-username>.github.io/<repository-name>`.
-3. The Render API service uses the paid always-on `starter` plan so scheduled-message polling continues while the app is idle. Wait for Render to show the API as live and copy its URL.
-4. In GitHub repository **Settings → Secrets and variables → Actions → Variables**, add `VITE_API_URL` with the API URL ending in `/api`, for example `https://spendwise-api.onrender.com/api`.
-5. In **Settings → Pages**, select **GitHub Actions** as the publishing source. Run the **Deploy website to GitHub Pages** workflow from the Actions tab, or push another commit to `main`.
-6. The workflow publishes the website at `https://<github-username>.github.io/<repository-name>`.
-6. To enable scheduled email/SMS/WhatsApp delivery, add the relevant SMTP or Twilio environment variables to the Render API service. Keep these values in Render's environment settings, not in GitHub.
+1. Create or select the GitHub repository for this project. `.gitignore` excludes `.env` files and dependencies; never commit API keys, SMTP credentials, or database passwords.
+2. Create a MongoDB Atlas cluster and database. Add Vercel's network access as instructed by Atlas, then copy the connection string for the Vercel API environment variable `MONGO_URI`.
+3. In Vercel, import the GitHub repository twice. For the website project, set **Root Directory** to `client`; Vercel will build the Vite app using `client/vercel.json` for React Router deep links.
+4. For the API project, import the same repository and set **Root Directory** to `server`. Vercel detects the Express app from `server.js`; `server/vercel.json` configures the protected scheduled-job endpoint.
+5. Set these API project environment variables in Vercel for Production and Preview as needed: `MONGO_URI`, a strong unique `JWT_SECRET`, the website's exact origin as `CLIENT_URL`, and a strong random `CRON_SECRET`. Add `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, and `HIDDEN_EXPENSE_RECOVERY_EMAIL` for email features.
+6. After the API deploys, copy its URL. In the website project's environment variables, set `VITE_API_URL` to that URL followed by `/api`, for example `https://spendwise-api.vercel.app/api`. Redeploy the website after adding the variable.
+7. Add the website's Vercel domain to MongoDB Atlas network access and check that `CLIENT_URL` exactly matches the website origin (no `/api` suffix). Both projects will deploy automatically from their connected GitHub branch.
 
-The frontend workflow is in `.github/workflows/deploy-website.yml`. Deep links are handled by the generated Pages `404.html` fallback. GitHub Actions variables and Pages publishing are documented by [GitHub Pages custom workflows](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages); the backend Blueprint is described in [Render's Blueprint documentation](https://render.com/docs/blueprint-spec).
-
+The included Vercel Cron runs scheduled reminders and queued recovery emails daily so it can deploy on Vercel Hobby. Hobby schedules have daily precision, so reminders may arrive late. For minute-accurate reminders, use a Vercel plan that supports per-minute cron runs and change the schedule in `server/vercel.json` to `* * * * *`, or use a separate scheduled-job provider. Cron requests are protected by `CRON_SECRET`.
 ## Android and iOS app
 
 The Expo React Native app lives in `mobile/` and connects to the same API. Set `EXPO_PUBLIC_API_URL` to the deployed API URL, then use Expo Go for development or EAS Build for an installable Android package. See `mobile/README.md` for setup and build instructions. Expo documents creating projects with [`create-expo-app`](https://docs.expo.dev/get-started/create-a-project/) and [internal Android/iOS builds](https://docs.expo.dev/build/internal-distribution/).

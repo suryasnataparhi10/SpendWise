@@ -49,7 +49,7 @@ export default function Budgets() {
 
   return (
     <>
-      <div className="page-heading">
+      <div className="page-heading section-hero">
         <div>
           <span className="eyebrow">SPENDING PLAN</span>
           <h1>Budgets</h1>
@@ -57,7 +57,7 @@ export default function Budgets() {
         </div>
       </div>
       <div className="finance-columns">
-        <section className="panel finance-form-panel">
+        <section className="panel finance-form-panel section-panel">
           <div className="panel-heading">
             <div>
               <span className="eyebrow">MONTHLY LIMIT</span>
@@ -94,7 +94,7 @@ export default function Budgets() {
           </form>
         </section>
 
-        <section className="panel budget-status-panel">
+        <section className="panel budget-status-panel section-panel">
           <div className="panel-heading">
             <div>
               <span className="eyebrow">BUDGET STATUS</span>

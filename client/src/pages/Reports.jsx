@@ -2,11 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Bar } from 'react-chartjs-2';
 import { fetchReport } from '../state/store';
-import { inr } from '../utils';
+import { getThemeAccent, getThemeAccentHover, inr } from '../utils';
 
 export default function Reports() {
   const dispatch = useDispatch();
   const { data: months, loading } = useSelector((state) => state.reports);
+  const colorTheme = useSelector((state) => state.colorTheme);
+  const appearance = useSelector((state) => state.theme);
+  const customAccent = useSelector((state) => state.customAccent);
   const [year, setYear] = useState(new Date().getFullYear());
 
   useEffect(() => {
@@ -34,14 +37,14 @@ export default function Reports() {
       {
         label: 'Income',
         data: (months || []).map((month) => month.income),
-        backgroundColor: '#4f6bff',
+        backgroundColor: getThemeAccent(colorTheme, appearance, customAccent),
         borderRadius: 5,
         maxBarThickness: 28,
       },
       {
         label: 'Expenses',
         data: (months || []).map((month) => month.expenses),
-        backgroundColor: '#ef8a69',
+        backgroundColor: getThemeAccentHover(colorTheme, appearance, customAccent),
         borderRadius: 5,
         maxBarThickness: 28,
       },
@@ -63,7 +66,7 @@ export default function Reports() {
 
   return (
     <>
-      <div className="page-heading">
+      <div className="page-heading section-hero">
         <div>
           <span className="eyebrow">YOUR FINANCIAL TRENDS</span>
           <h1>Reports</h1>
@@ -83,14 +86,14 @@ export default function Reports() {
         </select>
       </div>
 
-      <div className="row g-3 metric-grid">
+      <div className="row g-3 metric-grid section-metrics">
         {[
           ['Income', totals.income, 'bi-arrow-down-left'],
           ['Expenses', totals.expenses, 'bi-arrow-up-right'],
           ['Net savings', totals.net, 'bi-piggy-bank'],
         ].map(([label, amount, icon]) => (
           <div className="col-md-4" key={label}>
-            <div className="metric-card report-metric">
+            <div className="metric-card report-metric section-metric">
               <div className="metric-top">
                 <span>
                   {label} · {year}
@@ -108,7 +111,7 @@ export default function Reports() {
         ))}
       </div>
 
-      <section className="panel report-chart-panel">
+      <section className="panel report-chart-panel section-panel">
         <div className="panel-heading">
           <div>
             <span className="eyebrow">MONTH BY MONTH</span>
@@ -136,7 +139,7 @@ export default function Reports() {
         )}
       </section>
 
-      <section className="panel report-table-panel">
+      <section className="panel report-table-panel section-panel">
         <div className="panel-heading">
           <div>
             <span className="eyebrow">CASH FLOW</span>

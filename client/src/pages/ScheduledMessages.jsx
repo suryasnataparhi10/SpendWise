@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import CalendarInput from '../components/CalendarInput';
 import TimePicker from '../components/TimePicker';
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import {
   createScheduledMessage,
   deleteScheduledMessage,
@@ -33,8 +34,6 @@ const localTime = (dateValue) => {
 const initialForm = () => ({
   contactName: '',
   email: '',
-  phone: '+91',
-  channel: 'email',
   messageType: 'greeting',
   message: templates.greeting,
   frequency: 'once',
@@ -42,7 +41,6 @@ const initialForm = () => ({
   date: tomorrow(),
   time: '09:00',
   endDate: '',
-  recipientConsented: false,
 });
 const frequencyLabel = (message) => {
   if (message.frequency === 'custom') return `Every ${message.intervalDays} days`;
@@ -59,6 +57,7 @@ export default function ScheduledMessages() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const formPanel = useRef(null);
 
@@ -71,9 +70,7 @@ export default function ScheduledMessages() {
       .catch(() => {});
   }, []);
 
-  const channelReady = deliveryStatus?.[
-    { email: 'emailConfigured', sms: 'smsConfigured', whatsapp: 'whatsappConfigured' }[form.channel]
-  ];
+  const channelReady = deliveryStatus?.emailConfigured;
   const grouped = useMemo(() => messages || [], [messages]);
   const changeMessageType = (messageType) =>
     setForm((current) => ({
@@ -99,8 +96,6 @@ export default function ScheduledMessages() {
     setForm({
       contactName: message.contactName,
       email: message.email || '',
-      phone: message.phone,
-      channel: message.channel,
       messageType: message.messageType,
       message: message.message,
       frequency: message.frequency,
@@ -108,7 +103,6 @@ export default function ScheduledMessages() {
       date: localDate(defaultTime),
       time: localTime(defaultTime),
       endDate: message.endAt ? localDate(message.endAt) : '',
-      recipientConsented: true,
     });
     formPanel.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
@@ -121,8 +115,6 @@ export default function ScheduledMessages() {
       const payload = {
         contactName: form.contactName,
         email: form.email,
-        phone: form.phone,
-        channel: form.channel,
         messageType: form.messageType,
         message: form.message,
         frequency: form.frequency,
@@ -130,7 +122,6 @@ export default function ScheduledMessages() {
         scheduledAt: new Date(`${form.date}T${form.time}:00`).toISOString(),
         endAt: form.endDate ? new Date(`${form.endDate}T23:59:59`).toISOString() : undefined,
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata',
-        recipientConsented: form.recipientConsented,
       };
       if (editingId) {
         await dispatch(updateScheduledMessage({ id: editingId, message: payload })).unwrap();
@@ -159,36 +150,43 @@ export default function ScheduledMessages() {
     }
   };
   const remove = async (message) => {
-    if (!window.confirm(`Delete the scheduled message for ${message.contactName}?`)) return;
-    setBusyId(message._id);
-    try {
-      await dispatch(deleteScheduledMessage(message._id)).unwrap();
-      load();
-    } finally {
-      setBusyId(null);
-    }
+    setDeleteConfirmation({
+      title: `Delete the schedule for ${message.contactName}?`,
+      description: 'This will permanently remove this scheduled message.',
+      confirmLabel: 'Delete schedule',
+      onConfirm: async () => {
+        setBusyId(message._id);
+        try {
+          await dispatch(deleteScheduledMessage(message._id)).unwrap();
+          load();
+        } finally {
+          setBusyId(null);
+          setDeleteConfirmation(null);
+        }
+      },
+    });
   };
 
   return (
     <>
-      <div className="page-heading">
+      <div className="page-heading section-hero">
         <div>
           <span className="eyebrow">THOUGHTFUL NOTES, ON TIME</span>
           <h1>Scheduled messages</h1>
           <p className="muted">Schedule a greeting or personal note for someone you care about.</p>
         </div>
       </div>
-      {deliveryStatus && !deliveryStatus.emailConfigured && !deliveryStatus.smsConfigured && !deliveryStatus.whatsappConfigured && (
+      {deliveryStatus && !deliveryStatus.emailConfigured && (
         <div className="message-provider-notice">
           <i className="bi bi-info-circle" />
           <span>
-            Schedules are saved, but delivery is not connected yet. Configure SMTP for email or
-            Twilio for SMS and WhatsApp in the server environment.
+            Schedules are saved, but delivery is not connected yet. Configure your Gmail SMTP
+            settings and app password in the server environment.
           </span>
         </div>
       )}
       <div className="message-layout">
-        <section className="panel message-form-panel" ref={formPanel}>
+        <section className="panel message-form-panel section-panel" ref={formPanel}>
           <div className="panel-heading">
             <div>
               <span className="eyebrow">{editingId ? 'EDIT SCHEDULE' : 'NEW SCHEDULE'}</span>
@@ -207,29 +205,9 @@ export default function ScheduledMessages() {
                   required
                 />
               </label>
-              {form.channel === 'email' ? (
-                <label className="form-label">
-                  Email address
-                  <input className="form-control" type="email" placeholder="name@example.com" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required />
-                </label>
-              ) : (
-                <label className="form-label">
-                  Phone number
-                  <input className="form-control" type="tel" inputMode="tel" placeholder="+91 98765 43210" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} pattern="\+[1-9][0-9]{7,14}" title="Enter the full number with its country code, for example +919876543210" required />
-                  <small className="muted">India country code +91 is prefilled. Keep the full number in international format.</small>
-                </label>
-              )}
               <label className="form-label">
-                Send with
-                <select
-                  className="form-select"
-                  value={form.channel}
-                  onChange={(event) => setForm({ ...form, channel: event.target.value })}
-                >
-                  <option value="email">Email</option>
-                  <option value="sms">SMS</option>
-                  <option value="whatsapp">WhatsApp</option>
-                </select>
+                Recipient email address
+                <input className="form-control" type="email" placeholder="name@example.com" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required />
               </label>
               <label className="form-label">
                 Message style
@@ -315,20 +293,10 @@ export default function ScheduledMessages() {
                 </label>
               )}
             </div>
-            <label className="message-consent">
-              <input
-                type="checkbox"
-                checked={form.recipientConsented}
-                onChange={(event) => setForm({ ...form, recipientConsented: event.target.checked })}
-                required
-              />{' '}
-              I have permission to send messages to this person.
-            </label>
             {error && <div className="alert alert-danger py-2">{error}</div>}
             {!channelReady && deliveryStatus && (
               <p className="message-setup-hint">
-                {form.channel === 'email' ? 'Email' : form.channel === 'sms' ? 'SMS' : 'WhatsApp'} delivery is not configured. You can save
-                this schedule now and connect delivery later.
+                Email delivery is not configured. You can save this schedule now and connect delivery later.
               </p>
             )}
             <button className="btn btn-primary" disabled={saving}>
@@ -343,7 +311,7 @@ export default function ScheduledMessages() {
           </form>
         </section>
 
-        <section className="panel message-list-panel">
+        <section className="panel message-list-panel section-panel">
           <div className="panel-heading">
             <div>
               <span className="eyebrow">YOUR QUEUE</span>
@@ -364,13 +332,9 @@ export default function ScheduledMessages() {
             <div className="scheduled-message-list">
               {grouped.map((message) => {
                 const sentOnce = message.frequency === 'once' && message.lastSentAt;
-                const configured = deliveryStatus?.[
-                  { email: 'emailConfigured', sms: 'smsConfigured', whatsapp: 'whatsappConfigured' }[
-                    message.channel
-                  ]
-                ];
+                const configured = deliveryStatus?.emailConfigured;
                 const statusLabel = sentOnce
-                  ? 'Sent'
+                  ? 'Accepted by Gmail'
                   : !message.active
                     ? 'Paused'
                     : deliveryStatus && !configured
@@ -385,7 +349,7 @@ export default function ScheduledMessages() {
                       <div className="scheduled-message-contact">
                         <b>{message.contactName}</b>
                         <small>
-                          {message.email || message.phone} · {message.channel === 'email' ? 'Email' : message.channel === 'whatsapp' ? 'WhatsApp' : 'SMS'}
+                          {message.email} · Email
                         </small>
                       </div>
                       <span
@@ -408,6 +372,11 @@ export default function ScheduledMessages() {
                           : new Date(message.nextSendAt).toLocaleString()}
                       </span>
                     </div>
+                    {message.lastSentAt && (
+                      <p className="scheduled-message-delivery-note">
+                        Gmail accepted this email for delivery at {new Date(message.lastSentAt).toLocaleString()}. Inbox delivery is not confirmed. Check the sender’s Sent folder and the recipient’s Spam or Promotions folders.
+                      </p>
+                    )}
                     {message.lastError && (
                       <p className="scheduled-message-error">
                         <i className="bi bi-exclamation-circle" /> Last attempt failed:{' '}
@@ -450,6 +419,11 @@ export default function ScheduledMessages() {
           )}
         </section>
       </div>
+      <ConfirmDeleteModal
+        open={Boolean(deleteConfirmation)}
+        {...deleteConfirmation}
+        onCancel={() => setDeleteConfirmation(null)}
+      />
     </>
   );
 }

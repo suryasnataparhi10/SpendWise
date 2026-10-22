@@ -20,6 +20,26 @@ import * as SecureStore from 'expo-secure-store';
 const API_URL = (process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/$/, '');
 const PAYMENT_METHODS = ['Cash', 'Navi', 'GPay', 'PhonePe', 'Paytm', 'YONO', 'ICICI', 'Overseas', 'Debit Card', 'Credit Card', 'Bank Transfer', 'Other'];
 const BRAND = '#4f6bff';
+const PALETTES = [
+  ['Midnight Mint', '#56d6a4'], ['Ocean Breeze', '#287f8e'], ['Sage & Sand', '#71866b'],
+  ['Berry Night', '#a34e83'], ['Arctic Frost', '#527fa8'], ['Rosewood', '#a65970'],
+  ['Citrus Grove', '#728a3c'], ['Royal Indigo', '#5d5fb0'], ['Aurora Glow', '#3c9d96'],
+  ['Sakura', '#c7668a'], ['Midnight Orchid', '#8061a5'], ['Coastal Sand', '#4c9290'],
+];
+const PALETTE_SURFACES = {
+  'Midnight Mint': ['#f2f7f4', '#ffffff', '#203b32', '#dcece4', '#e3eee7'],
+  'Ocean Breeze': ['#edf5f7', '#fbfeff', '#293b47', '#d8e9ee', '#dcecf0'],
+  'Sage & Sand': ['#f4f0e6', '#fffdf7', '#303b32', '#e4dfd1', '#e8eadc'],
+  'Berry Night': ['#f5eef4', '#fffaff', '#3d2939', '#e9dce8', '#f0e1ed'],
+  'Arctic Frost': ['#edf4fa', '#fbfdff', '#29394a', '#dbe7f1', '#dce9f5'],
+  Rosewood: ['#f7eff1', '#fffafd', '#452f38', '#eddee3', '#f2e0e7'],
+  'Citrus Grove': ['#f4f4e7', '#fffef8', '#35402b', '#e4e5d0', '#e8edcf'],
+  'Royal Indigo': ['#f0f0fa', '#fcfcff', '#302f4d', '#dfdff0', '#e1e2f7'],
+  'Aurora Glow': ['#eff7f4', '#fbfffd', '#263b3c', '#d9eae4', '#dff3ef'],
+  Sakura: ['#fbf0f4', '#fffafd', '#493440', '#efdde6', '#f8e4ec'],
+  'Midnight Orchid': ['#f3eff8', '#fcfaff', '#392e47', '#e3ddec', '#e8def1'],
+  'Coastal Sand': ['#f6f3e9', '#fffdf6', '#354442', '#e6e1d0', '#e3eee7'],
+};
 const today = () => {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -51,7 +71,7 @@ async function request(path, { token, method = 'GET', body } = {}) {
 }
 
 const initialExpense = () => ({
-  item: '', amount: '', paymentMethod: 'Cash', hasSubtypes: false,
+  item: '', amount: '', paymentMethod: 'Cash', date: today(), hasSubtypes: false,
   subtypes: [{ type: '', amount: '', paymentMethod: 'Cash' }],
 });
 const initialMessage = () => ({
@@ -60,8 +80,15 @@ const initialMessage = () => ({
 });
 
 export default function App() {
-  const isDark = useColorScheme() === 'dark';
-  const theme = isDark ? darkTheme : lightTheme;
+  const systemScheme = useColorScheme();
+  const [appearance, setAppearance] = useState('system');
+  const [palette, setPalette] = useState('Midnight Mint');
+  const [customAccent, setCustomAccent] = useState('#7c6ee8');
+  const [profileName, setProfileName] = useState('');
+  const [profileBusy, setProfileBusy] = useState(false);
+  const isDark = appearance === 'system' ? systemScheme === 'dark' : appearance === 'dark';
+  const chosenAccent = palette === 'Custom' ? (/^#[\da-f]{6}$/i.test(customAccent) ? customAccent : '#7c6ee8') : (PALETTES.find(([name]) => name === palette)?.[1] || PALETTES[0][1]);
+  const theme = makePalette(isDark, chosenAccent, palette);
   const styles = makeStyles(theme);
   const [token, setToken] = useState(null);
   const [user, setUser] = useState(null);
@@ -74,6 +101,11 @@ export default function App() {
   const [messageStatus, setMessageStatus] = useState(null);
   const [loading, setLoading] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const [editingExpenseId, setEditingExpenseId] = useState(null);
+  const [expenseSearch, setExpenseSearch] = useState('');
+  const [expenseMonth, setExpenseMonth] = useState(today().slice(0, 7));
+  const [expensePayment, setExpensePayment] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState(today().slice(0, 7));
   const [expenseForm, setExpenseForm] = useState(initialExpense);
   const [incomeForm, setIncomeForm] = useState({ source: '', amount: '', date: today() });
   const [budgetForm, setBudgetForm] = useState({ month: String(new Date().getMonth() + 1), limit: '' });
@@ -81,6 +113,11 @@ export default function App() {
   const [messageForm, setMessageForm] = useState(initialMessage);
 
   useEffect(() => {
+    Promise.all(['spendwise-appearance', 'spendwise-palette', 'spendwise-custom-accent'].map((key) => SecureStore.getItemAsync(key))).then(([savedAppearance, savedPalette, savedAccent]) => {
+      if (savedAppearance) setAppearance(savedAppearance);
+      if (savedPalette) setPalette(savedPalette);
+      if (savedAccent && /^#[\da-f]{6}$/i.test(savedAccent)) setCustomAccent(savedAccent);
+    });
     SecureStore.getItemAsync('spendwise-token')
       .then(async (savedToken) => {
         if (!savedToken) return;
@@ -88,6 +125,7 @@ export default function App() {
           const profile = await request('/auth/me', { token: savedToken });
           setToken(savedToken);
           setUser(profile);
+          setProfileName(profile.name || '');
         } catch {
           await SecureStore.deleteItemAsync('spendwise-token');
         }
@@ -99,21 +137,30 @@ export default function App() {
     if (!token) return;
     setLoading(true);
     try {
-      const now = new Date();
+      const [viewYear, viewMonth] = selectedMonth.split('-').map(Number);
       let next = [];
       if (screen === 'Overview') {
         const [monthSummary, recent] = await Promise.all([
-          request(`/dashboard/summary?month=${now.getMonth() + 1}&year=${now.getFullYear()}`, { token }),
-          request('/expenses?month=' + (now.getMonth() + 1) + '&year=' + now.getFullYear(), { token }),
+          request(`/dashboard/summary?month=${viewMonth}&year=${viewYear}`, { token }),
+          request(`/expenses?month=${viewMonth}&year=${viewYear}`, { token }),
         ]);
         setSummary(monthSummary);
         next = recent.slice(0, 6);
       } else if (screen === 'Expenses') {
-        next = await request('/expenses', { token });
+        const params = new URLSearchParams();
+        if (expenseSearch.trim()) params.set('search', expenseSearch.trim());
+        if (expensePayment) params.set('paymentMethod', expensePayment);
+        if (expenseMonth && !expenseSearch.trim()) { params.set('year', expenseMonth.slice(0, 4)); params.set('month', String(Number(expenseMonth.slice(5, 7)))); }
+        next = await request(`/expenses?${params.toString()}`, { token });
       } else if (screen === 'Income') {
-        next = await request(`/income?month=${now.getMonth() + 1}&year=${now.getFullYear()}`, { token });
+        const [income, monthSummary] = await Promise.all([
+          request(`/income?month=${viewMonth}&year=${viewYear}`, { token }),
+          request(`/dashboard/summary?month=${viewMonth}&year=${viewYear}`, { token }),
+        ]);
+        setSummary(monthSummary);
+        next = income;
       } else if (screen === 'Budgets') {
-        next = await request(`/budgets?year=${now.getFullYear()}`, { token });
+        next = await request(`/budgets?year=${viewYear}`, { token });
       } else if (screen === 'Reminders') {
         next = await request('/reminders', { token });
       } else if (screen === 'Scheduled messages') {
@@ -124,7 +171,7 @@ export default function App() {
         next = messages;
         setMessageStatus(status);
       } else if (screen === 'Reports') {
-        next = await request(`/reports/yearly?year=${now.getFullYear()}`, { token });
+        next = await request(`/reports/yearly?year=${viewYear}`, { token });
       }
       setData(next || []);
     } catch (error) {
@@ -132,12 +179,18 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [screen, token]);
+  }, [screen, token, expenseSearch, expenseMonth, expensePayment, selectedMonth]);
 
   useEffect(() => { load(); }, [load]);
 
   const signIn = async () => {
     try {
+      if (authMode === 'forgot') {
+        await request('/auth/forgot-password', { method: 'POST', body: { email: authForm.email } });
+        Alert.alert('Check your email', 'If an account exists, a password reset link has been sent.');
+        setAuthMode('login');
+        return;
+      }
       const result = await request(`/auth/${authMode}`, {
         method: 'POST',
         body: authMode === 'register'
@@ -147,6 +200,7 @@ export default function App() {
       await SecureStore.setItemAsync('spendwise-token', result.token);
       setToken(result.token);
       setUser(result.user);
+      setProfileName(result.user?.name || '');
       setScreen('Overview');
     } catch (error) {
       Alert.alert('Sign in failed', error.message);
@@ -176,9 +230,26 @@ export default function App() {
     setScreen('Overview');
   };
 
+  const chooseAppearance = async (value) => { setAppearance(value); await SecureStore.setItemAsync('spendwise-appearance', value); };
+  const choosePalette = async (value) => { setPalette(value); await SecureStore.setItemAsync('spendwise-palette', value); };
+  const saveProfile = async () => {
+    setProfileBusy(true);
+    try { const updated = await request('/auth/profile', { token, method: 'PATCH', body: { name: profileName.trim() } }); setUser(updated); Alert.alert('Profile saved', 'Your display name has been updated.'); }
+    catch (error) { Alert.alert('Could not save profile', error.message); }
+    finally { setProfileBusy(false); }
+  };
+
   const changeScreen = (name) => {
     setScreen(name);
     setFormOpen(false);
+    setEditingExpenseId(null);
+    setExpenseForm(initialExpense());
+  };
+
+  const shiftMonth = (delta) => {
+    const [year, month] = selectedMonth.split('-').map(Number);
+    const next = new Date(year, month - 1 + delta, 1);
+    setSelectedMonth(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`);
   };
 
   const submitExpense = () => {
@@ -188,12 +259,19 @@ export default function App() {
       : Number(expenseForm.amount);
     if (!expenseForm.item.trim() || amount <= 0) return Alert.alert('Add an item and a valid amount');
     if (expenseForm.hasSubtypes && !activeSubtypes.length) return Alert.alert('Add at least one subtype with an amount');
-    save('/expenses', {
+    save(editingExpenseId ? `/expenses/${editingExpenseId}` : '/expenses', {
       item: expenseForm.item.trim(), description: expenseForm.item.trim(), category: 'Other',
-      date: today(), amount, paymentMethod: expenseForm.paymentMethod,
+      date: expenseForm.date || today(), amount, paymentMethod: expenseForm.paymentMethod,
       hasSubtypes: expenseForm.hasSubtypes, subtypes: expenseForm.hasSubtypes ? activeSubtypes : [],
-    });
+    }, editingExpenseId ? 'PUT' : 'POST');
     setExpenseForm(initialExpense());
+    setEditingExpenseId(null);
+  };
+
+  const editExpense = (expense) => {
+    setEditingExpenseId(expense._id);
+    setExpenseForm({ item: expense.item || expense.description || '', amount: String(expense.amount || ''), date: String(expense.date).slice(0, 10), paymentMethod: expense.paymentMethod || 'Cash', hasSubtypes: Boolean(expense.hasSubtypes), subtypes: expense.subtypes?.length ? expense.subtypes.map((sub) => ({ ...sub, amount: String(sub.amount) })) : [{ type: '', amount: '', paymentMethod: 'Cash' }] });
+    setFormOpen(true);
   };
 
   const submitMessage = () => {
@@ -219,8 +297,9 @@ export default function App() {
     if (!formOpen) return null;
     if (screen === 'Expenses') return (
       <Card styles={styles}>
-        <Text style={styles.cardTitle}>Add expense</Text>
+        <Text style={styles.cardTitle}>{editingExpenseId ? 'Edit expense' : 'Add expense'}</Text>
         <Field label="Item" value={expenseForm.item} onChangeText={(item) => setExpenseForm({ ...expenseForm, item })} placeholder="e.g. Groceries" styles={styles} />
+        <Field label="Date (YYYY-MM-DD)" value={expenseForm.date} onChangeText={(date) => setExpenseForm({ ...expenseForm, date })} styles={styles} />
         <View style={styles.inlineRow}>
           <View style={styles.flex}><Field label="Amount" value={expenseForm.amount} onChangeText={(amount) => setExpenseForm({ ...expenseForm, amount })} keyboardType="decimal-pad" placeholder="₹ 0" styles={styles} /></View>
           <View style={styles.flex}><Text style={styles.label}>Payment method</Text><PaymentChips value={expenseForm.paymentMethod} onChange={(paymentMethod) => setExpenseForm({ ...expenseForm, paymentMethod })} styles={styles} compact /></View>
@@ -240,7 +319,7 @@ export default function App() {
           </View>
         ))}
         {expenseForm.hasSubtypes && <Action title="Add subtype" secondary onPress={() => setExpenseForm({ ...expenseForm, subtypes: [...expenseForm.subtypes, { type: '', amount: '', paymentMethod: 'Cash' }] })} styles={styles} />}
-        <Action title="Save expense" onPress={submitExpense} styles={styles} />
+        <Action title={editingExpenseId ? 'Update expense' : 'Save expense'} onPress={submitExpense} styles={styles} />
       </Card>
     );
     if (screen === 'Income') return (
@@ -298,9 +377,11 @@ export default function App() {
     if (screen === 'Overview') return (
       <>
         <View style={styles.statGrid}>
+          <Stat label="Savings carried in" value={money(summary?.openingBalance)} styles={styles} />
           <Stat label="Income this month" value={money(summary?.totalMonthIncome)} styles={styles} />
+          <Stat label="Available to spend" value={money(summary?.availableFunds ?? ((summary?.openingBalance || 0) + (summary?.totalMonthIncome || 0)))} styles={styles} accent />
           <Stat label="Expenses this month" value={money(summary?.totalMonthExpense)} styles={styles} />
-          <Stat label="Balance" value={money(summary?.remainingBalance)} styles={styles} accent />
+          <Stat label="Balance after expenses" value={money(summary?.remainingBalance)} styles={styles} accent />
           <Stat label="Spent today" value={money(summary?.todayExpense)} styles={styles} />
         </View>
         <SectionTitle title="Recent expenses" styles={styles} />
@@ -308,10 +389,12 @@ export default function App() {
       </>
     );
     if (screen === 'Expenses') return <>
-      {data.map((expense) => <ExpenseRow key={expense._id} item={expense} styles={styles} onDelete={() => remove('/expenses', expense._id)} />)}
+      <Card styles={styles}><Field label="Search expenses" value={expenseSearch} onChangeText={setExpenseSearch} placeholder="Search by item" styles={styles} /><Field label="Month (YYYY-MM)" value={expenseMonth} onChangeText={setExpenseMonth} placeholder="Leave empty for all dates" styles={styles} /><Text style={styles.label}>Payment method</Text><ChoiceChips choices={['All', ...PAYMENT_METHODS]} value={expensePayment || 'All'} onChange={(value) => setExpensePayment(value === 'All' ? '' : value)} styles={styles} /></Card>
+      {data.map((expense) => <ExpenseRow key={expense._id} item={expense} styles={styles} onDelete={() => remove('/expenses', expense._id)} onEdit={() => editExpense(expense)} />)}
       {!data.length && <Empty text="No expenses recorded for this month." styles={styles} />}
     </>;
     if (screen === 'Income') return <>
+      <Card styles={styles}><Text style={styles.cardTitle}>Monthly available balance</Text><View style={styles.itemRow}><Text style={[styles.muted, styles.flex]}>Previous month savings</Text><Text style={styles.amount}>{money(summary?.openingBalance)}</Text></View><View style={styles.itemRow}><Text style={[styles.muted, styles.flex]}>Income this month</Text><Text style={styles.amount}>{money(summary?.totalMonthIncome)}</Text></View><View style={styles.itemRow}><Text style={[styles.muted, styles.flex]}>Available before expenses</Text><Text style={styles.amount}>{money(summary?.availableFunds)}</Text></View><View style={styles.itemRow}><Text style={[styles.muted, styles.flex]}>Remaining after expenses</Text><Text style={styles.amount}>{money(summary?.remainingBalance)}</Text></View></Card>
       {data.map((entry) => <Card styles={styles} key={entry._id}>
         <View style={styles.itemRow}><View style={styles.flex}><Text style={styles.itemTitle}>{entry.source}</Text><Text style={styles.muted}>{new Date(entry.date).toLocaleDateString()}</Text></View><Text style={styles.amount}>{money(entry.amount)}</Text><Pressable onPress={() => remove('/income', entry._id)}><Text style={styles.removeText}>×</Text></Pressable></View>
       </Card>)}
@@ -353,7 +436,10 @@ export default function App() {
         <Text style={styles.muted}>Income {money(month.income)} · Expenses {money(month.expenses)}</Text>
       </Card>)}
     </>;
-    return <MoreMenu styles={styles} changeScreen={changeScreen} logout={logout} user={user} />;
+    return <MoreMenu styles={styles} changeScreen={changeScreen} logout={logout} user={user}
+      appearance={appearance} chooseAppearance={chooseAppearance} palette={palette} choosePalette={choosePalette}
+      customAccent={customAccent} setCustomAccent={(value) => { setCustomAccent(value); if (/^#[\da-f]{6}$/i.test(value)) SecureStore.setItemAsync('spendwise-custom-accent', value); }}
+      profileName={profileName} setProfileName={setProfileName} saveProfile={saveProfile} profileBusy={profileBusy} />;
   };
 
   if (booting) return <SafeAreaView style={[styles.safe, styles.center]}><ActivityIndicator color={BRAND} size="large" /></SafeAreaView>;
@@ -363,14 +449,15 @@ export default function App() {
       <KeyboardAvoidingView style={styles.authWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.authContent} keyboardShouldPersistTaps="handled">
           <View style={styles.logo}><Text style={styles.logoMark}>W</Text></View>
-          <Text style={styles.heroTitle}>Pocketwise</Text>
-          <Text style={styles.muted}>{authMode === 'login' ? 'Sign in to pick up where you left off.' : 'Create an account to get started.'}</Text>
+          <Text style={styles.heroTitle}>SpendWise</Text>
+          <Text style={styles.muted}>{authMode === 'login' ? 'Sign in to pick up where you left off.' : authMode === 'register' ? 'Create an account to get started.' : 'We’ll email a secure password reset link if the account exists.'}</Text>
           {authMode === 'register' && <Field label="Name" value={authForm.name} onChangeText={(name) => setAuthForm({ ...authForm, name })} styles={styles} />}
           <Field label="Email" value={authForm.email} onChangeText={(email) => setAuthForm({ ...authForm, email })} keyboardType="email-address" autoCapitalize="none" styles={styles} />
-          <Field label="Password" value={authForm.password} onChangeText={(password) => setAuthForm({ ...authForm, password })} secureTextEntry styles={styles} />
-          <Action title={authMode === 'login' ? 'Sign in' : 'Create account'} onPress={signIn} styles={styles} />
+          {authMode !== 'forgot' && <Field label="Password" value={authForm.password} onChangeText={(password) => setAuthForm({ ...authForm, password })} secureTextEntry styles={styles} />}
+          <Action title={authMode === 'login' ? 'Sign in' : authMode === 'register' ? 'Create account' : 'Send reset link'} onPress={signIn} styles={styles} />
+          {authMode === 'login' && <Pressable onPress={() => setAuthMode('forgot')} style={styles.authSwitch}><Text style={styles.linkText}>Forgot password?</Text></Pressable>}
           <Pressable onPress={() => setAuthMode(authMode === 'login' ? 'register' : 'login')} style={styles.authSwitch}>
-            <Text style={styles.linkText}>{authMode === 'login' ? 'New to SpendWise? Create an account' : 'Already have an account? Sign in'}</Text>
+            <Text style={styles.linkText}>{authMode === 'forgot' ? 'Back to sign in' : authMode === 'login' ? 'New to SpendWise? Create an account' : 'Already have an account? Sign in'}</Text>
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -386,7 +473,8 @@ export default function App() {
       </View>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         {screen === 'Overview' && <Text style={styles.greeting}>Hello{user?.name ? `, ${user.name}` : ''} 👋</Text>}
-        {screen !== 'More' && screen !== 'Overview' && <Action title={formOpen ? 'Close form' : `+ Add ${screen === 'Expenses' ? 'expense' : screen === 'Income' ? 'income' : screen === 'Budgets' ? 'budget' : screen === 'Reminders' ? 'reminder' : 'message'}`} secondary onPress={() => setFormOpen(!formOpen)} styles={styles} />}
+        {['Overview', 'Income'].includes(screen) && <View style={styles.periodPicker}><Pressable onPress={() => shiftMonth(-1)}><Text style={styles.periodArrow}>‹</Text></Pressable><Text style={styles.periodLabel}>{new Date(`${selectedMonth}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}</Text><Pressable onPress={() => shiftMonth(1)}><Text style={styles.periodArrow}>›</Text></Pressable></View>}
+        {screen !== 'More' && screen !== 'Overview' && <Action title={formOpen ? 'Close form' : `+ Add ${screen === 'Expenses' ? 'expense' : screen === 'Income' ? 'income' : screen === 'Budgets' ? 'budget' : screen === 'Reminders' ? 'reminder' : 'message'}`} secondary onPress={() => { setFormOpen(!formOpen); if (formOpen) { setEditingExpenseId(null); setExpenseForm(initialExpense()); } }} styles={styles} />}
         {renderForm()}
         {loading ? <ActivityIndicator color={BRAND} style={styles.loader} /> : renderBody()}
       </ScrollView>
@@ -417,11 +505,12 @@ function Empty({ text, styles }) { return <View style={styles.empty}><Text style
 function Stat({ label, value, styles, accent }) {
   return <View style={[styles.stat, accent && styles.statAccent]}><Text style={[styles.statLabel, accent && styles.statLabelAccent]}>{label}</Text><Text style={[styles.statValue, accent && styles.statValueAccent]}>{value}</Text></View>;
 }
-function ExpenseRow({ item, styles, onDelete }) {
+function ExpenseRow({ item, styles, onDelete, onEdit }) {
   return <Card styles={styles}><View style={styles.itemRow}>
     <View style={styles.expenseIcon}><Text style={styles.expenseIconText}>↗</Text></View>
     <View style={styles.flex}><Text style={styles.itemTitle}>{item.item || item.description}</Text><Text style={styles.muted}>{methodLabel(item.paymentMethod)} · {new Date(item.date).toLocaleDateString()}</Text></View>
     <Text style={styles.amount}>{money(item.amount)}</Text>
+    {onEdit && <Pressable onPress={onEdit}><Text style={styles.linkText}>Edit</Text></Pressable>}
     {onDelete && <Pressable onPress={onDelete}><Text style={styles.removeText}>×</Text></Pressable>}
   </View>
     {item.hasSubtypes && item.subtypes?.map((sub, index) => <Text key={index} style={styles.subText}>{sub.type} · {methodLabel(sub.paymentMethod)} · {money(sub.amount)}</Text>)}
@@ -436,36 +525,52 @@ function PaymentChips({ value, onChange, styles, compact }) {
   const methods = PAYMENT_METHODS;
   return <ChoiceChips choices={methods} value={value} onChange={onChange} styles={styles} compact={compact} />;
 }
-function MoreMenu({ styles, changeScreen, logout, user }) {
+function MoreMenu({ styles, changeScreen, logout, user, appearance, chooseAppearance, palette, choosePalette, customAccent, setCustomAccent, profileName, setProfileName, saveProfile, profileBusy }) {
   return <>
-    <Card styles={styles}><Text style={styles.itemTitle}>{user?.name || user?.email || 'Your account'}</Text><Text style={styles.muted}>More tools and settings</Text></Card>
+    <Card styles={styles}><Text style={styles.itemTitle}>{user?.name || user?.email || 'Your account'}</Text><Text style={styles.muted}>{user?.email}</Text>
+      <Field label="Display name" value={profileName} onChangeText={setProfileName} maxLength={60} styles={styles} />
+      <Action title={profileBusy ? 'Saving…' : 'Save profile'} onPress={saveProfile} styles={styles} />
+    </Card>
+    <Card styles={styles}><Text style={styles.cardTitle}>Appearance</Text><Text style={styles.label}>Light or dark mode</Text>
+      <ChoiceChips choices={['system', 'light', 'dark']} value={appearance} onChange={chooseAppearance} styles={styles} />
+      <Text style={styles.label}>Color theme</Text>
+      <View style={styles.paletteGrid}>{[...PALETTES.map(([name]) => name), 'Custom'].map((name) => <Pressable key={name} onPress={() => choosePalette(name)} style={[styles.paletteButton, palette === name && styles.paletteSelected]}><View style={[styles.paletteDot, { backgroundColor: name === 'Custom' ? customAccent : (PALETTES.find(([title]) => title === name)?.[1] || customAccent) }]} /><Text style={styles.paletteText}>{name}</Text></Pressable>)}</View>
+      <Field label="Custom accent (hex, e.g. #7c6ee8)" value={customAccent} onChangeText={(value) => /^#[\da-f]{0,6}$/i.test(value) && setCustomAccent(value)} autoCapitalize="none" maxLength={7} styles={styles} />
+      <Text style={styles.muted}>Theme and appearance are saved on this device and support light and dark mode.</Text>
+    </Card>
     {['Reminders', 'Scheduled messages', 'Reports'].map((name) => <Pressable key={name} onPress={() => changeScreen(name)} style={styles.moreRow}><Text style={styles.itemTitle}>{name}</Text><Text style={styles.linkText}>Open ›</Text></Pressable>)}
     <Action title="Sign out" secondary onPress={logout} styles={styles} />
   </>;
 }
 
-const lightTheme = { background: '#f3f6fb', surface: '#ffffff', ink: '#1b2940', muted: '#748198', line: '#e2e8f2', soft: '#e9edff' };
-const darkTheme = { background: '#0e1625', surface: '#172337', ink: '#edf2ff', muted: '#9ba9c1', line: '#293850', soft: '#252f4d' };
+function makePalette(isDark, primary, name) {
+  const [background, surface, ink, line, soft] = PALETTE_SURFACES[name] || PALETTE_SURFACES['Midnight Mint'];
+  return isDark
+    ? { background: '#111923', surface: '#1b2633', ink: '#edf2f7', muted: '#a2afbc', line: '#34414e', soft: `${primary}2b`, primary }
+    : { background, surface, ink, muted: '#74827b', line, soft, primary };
+}
 function makeStyles(theme) {
   return StyleSheet.create({
     safe: { flex: 1, backgroundColor: theme.background }, center: { justifyContent: 'center', alignItems: 'center' },
     authWrap: { flex: 1 }, authContent: { flexGrow: 1, justifyContent: 'center', padding: 24 },
-    logo: { width: 46, height: 46, borderRadius: 15, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }, logoMark: { color: '#fff', fontWeight: '900', fontSize: 22 },
+    logo: { width: 46, height: 46, borderRadius: 15, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }, logoMark: { color: '#fff', fontWeight: '900', fontSize: 22 },
     heroTitle: { color: theme.ink, fontSize: 32, fontWeight: '800', marginBottom: 6 },
     authSwitch: { paddingVertical: 18, alignItems: 'center' }, linkText: { color: isDarkTheme(theme) ? '#aebcff' : '#3552dc', fontSize: 13, fontWeight: '700' },
-    appHeader: { minHeight: 78, backgroundColor: '#13213a', paddingHorizontal: 20, paddingVertical: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    eyebrow: { color: '#aab9d2', fontSize: 9, fontWeight: '800', letterSpacing: 2 }, headerTitle: { color: '#fff', fontSize: 19, fontWeight: '800', marginTop: 3 }, refresh: { color: '#dce5f5', fontSize: 27, padding: 4 },
+    appHeader: { minHeight: 78, backgroundColor: theme.surface, borderBottomWidth: 1, borderBottomColor: theme.line, paddingHorizontal: 20, paddingVertical: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    eyebrow: { color: theme.primary, fontSize: 9, fontWeight: '800', letterSpacing: 2 }, headerTitle: { color: theme.ink, fontSize: 19, fontWeight: '800', marginTop: 3 }, refresh: { color: theme.primary, fontSize: 27, padding: 4 },
+    periodPicker: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, paddingVertical: 9, marginBottom: 10, borderRadius: 12, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line }, periodArrow: { color: theme.primary, fontSize: 25, paddingHorizontal: 12, fontWeight: '700' }, periodLabel: { color: theme.ink, fontSize: 14, fontWeight: '800' },
     scroll: { flex: 1 }, content: { padding: 17, paddingBottom: 28 }, greeting: { color: theme.ink, fontSize: 20, fontWeight: '700', marginBottom: 16 },
-    statGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 }, stat: { width: '48%', minHeight: 94, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line, borderRadius: 17, padding: 14, justifyContent: 'space-between' }, statAccent: { backgroundColor: '#273b66', borderColor: '#354c7d' }, statLabel: { color: theme.muted, fontSize: 11 }, statLabelAccent: { color: '#b8c9ec' }, statValue: { color: theme.ink, fontSize: 17, fontWeight: '800' }, statValueAccent: { color: '#fff' },
+    statGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 }, stat: { width: '48%', minHeight: 94, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line, borderRadius: 17, padding: 14, justifyContent: 'space-between' }, statAccent: { backgroundColor: theme.soft, borderColor: theme.primary }, statLabel: { color: theme.muted, fontSize: 11 }, statLabelAccent: { color: theme.ink }, statValue: { color: theme.ink, fontSize: 17, fontWeight: '800' }, statValueAccent: { color: theme.ink },
     card: { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line, borderRadius: 16, padding: 15, marginBottom: 11 }, cardTitle: { color: theme.ink, fontSize: 16, fontWeight: '800', marginBottom: 12 }, sectionTitle: { color: theme.ink, fontSize: 17, fontWeight: '800', marginBottom: 12, marginTop: 5 },
     fieldWrap: { marginBottom: 12, flex: 1 }, label: { color: theme.muted, fontSize: 11, fontWeight: '700', marginBottom: 6 }, input: { minHeight: 45, backgroundColor: theme.background, borderWidth: 1, borderColor: theme.line, borderRadius: 11, color: theme.ink, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 }, multiline: { minHeight: 90, textAlignVertical: 'top' },
     inlineRow: { flexDirection: 'row', alignItems: 'center', gap: 10 }, flex: { flex: 1, minWidth: 0 }, subtypeBox: { backgroundColor: theme.background, borderRadius: 12, borderWidth: 1, borderColor: theme.line, padding: 10, marginBottom: 10 },
-    action: { minHeight: 45, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 15, borderRadius: 12, backgroundColor: BRAND, marginTop: 8 }, actionText: { color: '#fff', fontSize: 13, fontWeight: '800' }, actionSecondary: { backgroundColor: theme.soft }, actionSecondaryText: { color: isDarkTheme(theme) ? '#dce3ff' : '#3552dc' },
-    chips: { flexDirection: 'row', gap: 7, paddingBottom: 7, paddingRight: 12 }, chip: { paddingVertical: 8, paddingHorizontal: 11, backgroundColor: theme.background, borderWidth: 1, borderColor: theme.line, borderRadius: 20 }, chipActive: { backgroundColor: '#e9edff', borderColor: '#cbd4ff' }, chipText: { color: theme.muted, fontSize: 11, fontWeight: '600' }, chipTextActive: { color: '#3552dc', fontWeight: '800' },
-    itemRow: { flexDirection: 'row', alignItems: 'center', gap: 10 }, expenseIcon: { width: 35, height: 35, borderRadius: 11, backgroundColor: theme.soft, justifyContent: 'center', alignItems: 'center' }, expenseIconText: { color: BRAND, fontWeight: '800' }, itemTitle: { color: theme.ink, fontSize: 13, fontWeight: '800' }, muted: { color: theme.muted, fontSize: 11, marginTop: 3 }, amount: { color: theme.ink, fontSize: 13, fontWeight: '800' }, removeText: { color: '#d55252', fontWeight: '700', fontSize: 14, padding: 5 }, subText: { color: theme.muted, fontSize: 11, paddingTop: 8, paddingLeft: 45 },
+    action: { minHeight: 45, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 15, borderRadius: 12, backgroundColor: theme.primary, marginTop: 8 }, actionText: { color: '#fff', fontSize: 13, fontWeight: '800' }, actionSecondary: { backgroundColor: theme.soft }, actionSecondaryText: { color: theme.primary },
+    chips: { flexDirection: 'row', gap: 7, paddingBottom: 7, paddingRight: 12 }, chip: { paddingVertical: 8, paddingHorizontal: 11, backgroundColor: theme.background, borderWidth: 1, borderColor: theme.line, borderRadius: 20 }, chipActive: { backgroundColor: theme.soft, borderColor: theme.primary }, chipText: { color: theme.muted, fontSize: 11, fontWeight: '600' }, chipTextActive: { color: theme.primary, fontWeight: '800' },
+    itemRow: { flexDirection: 'row', alignItems: 'center', gap: 10 }, expenseIcon: { width: 35, height: 35, borderRadius: 11, backgroundColor: theme.soft, justifyContent: 'center', alignItems: 'center' }, expenseIconText: { color: theme.primary, fontWeight: '800' }, itemTitle: { color: theme.ink, fontSize: 13, fontWeight: '800' }, muted: { color: theme.muted, fontSize: 11, marginTop: 3 }, amount: { color: theme.ink, fontSize: 13, fontWeight: '800' }, removeText: { color: '#d55252', fontWeight: '700', fontSize: 14, padding: 5 }, subText: { color: theme.muted, fontSize: 11, paddingTop: 8, paddingLeft: 45 },
     empty: { minHeight: 90, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line, borderRadius: 15, padding: 20 }, loader: { marginTop: 30 },
-    progressTrack: { height: 7, backgroundColor: theme.soft, borderRadius: 5, marginTop: 12, overflow: 'hidden' }, progressFill: { height: '100%', borderRadius: 5, backgroundColor: BRAND }, badge: { color: BRAND, backgroundColor: theme.soft, overflow: 'hidden', borderRadius: 20, paddingHorizontal: 9, paddingVertical: 5, fontSize: 10, fontWeight: '800' }, strike: { textDecorationLine: 'line-through', color: theme.muted }, messagePreview: { color: theme.ink, backgroundColor: theme.background, padding: 10, marginVertical: 10, borderRadius: 10, fontSize: 12 }, warningText: { color: '#b16e1a', fontSize: 11, marginVertical: 7 }, consentRow: { flexDirection: 'row', alignItems: 'center', gap: 9, marginVertical: 8 }, checkbox: { width: 21, height: 21, borderRadius: 6, borderWidth: 1, borderColor: theme.line }, checkboxOn: { backgroundColor: BRAND, borderColor: BRAND, justifyContent: 'center', alignItems: 'center' }, checkText: { color: '#fff', fontWeight: '900' },
-    tabBar: { flexDirection: 'row', justifyContent: 'space-around', backgroundColor: theme.surface, borderTopWidth: 1, borderColor: theme.line, paddingBottom: Platform.OS === 'ios' ? 14 : 5, paddingTop: 10 }, tab: { flex: 1, alignItems: 'center', paddingVertical: 4 }, tabText: { color: theme.muted, fontSize: 10, fontWeight: '700' }, tabActive: { color: BRAND }, moreRow: { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line, borderRadius: 13, padding: 16, marginBottom: 9, flexDirection: 'row', justifyContent: 'space-between' },
+    progressTrack: { height: 7, backgroundColor: theme.soft, borderRadius: 5, marginTop: 12, overflow: 'hidden' }, progressFill: { height: '100%', borderRadius: 5, backgroundColor: theme.primary }, badge: { color: theme.primary, backgroundColor: theme.soft, overflow: 'hidden', borderRadius: 20, paddingHorizontal: 9, paddingVertical: 5, fontSize: 10, fontWeight: '800' }, strike: { textDecorationLine: 'line-through', color: theme.muted }, messagePreview: { color: theme.ink, backgroundColor: theme.background, padding: 10, marginVertical: 10, borderRadius: 10, fontSize: 12 }, warningText: { color: '#b16e1a', fontSize: 11, marginVertical: 7 }, consentRow: { flexDirection: 'row', alignItems: 'center', gap: 9, marginVertical: 8 }, checkbox: { width: 21, height: 21, borderRadius: 6, borderWidth: 1, borderColor: theme.line }, checkboxOn: { backgroundColor: theme.primary, borderColor: theme.primary, justifyContent: 'center', alignItems: 'center' }, checkText: { color: '#fff', fontWeight: '900' },
+    tabBar: { flexDirection: 'row', justifyContent: 'space-around', backgroundColor: theme.surface, borderTopWidth: 1, borderColor: theme.line, paddingBottom: Platform.OS === 'ios' ? 14 : 5, paddingTop: 10 }, tab: { flex: 1, alignItems: 'center', paddingVertical: 4 }, tabText: { color: theme.muted, fontSize: 10, fontWeight: '700' }, tabActive: { color: theme.primary }, moreRow: { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line, borderRadius: 13, padding: 16, marginBottom: 9, flexDirection: 'row', justifyContent: 'space-between' },
+    paletteGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginVertical: 10 }, paletteButton: { width: '48%', flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 11, borderWidth: 1, borderColor: theme.line, backgroundColor: theme.background }, paletteSelected: { borderColor: theme.primary, backgroundColor: theme.soft }, paletteDot: { width: 17, height: 17, borderRadius: 9 }, paletteText: { color: theme.ink, fontSize: 11, fontWeight: '700' },
   });
 }
-function isDarkTheme(theme) { return theme.background === darkTheme.background; }
+function isDarkTheme(theme) { return theme.background === '#111923'; }

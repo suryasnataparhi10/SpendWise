@@ -20,6 +20,7 @@ module.exports = model(
       description: { type: String, trim: true },
       paymentMethod: { type: String, default: 'Cash' },
       notes: String,
+      isLocked: { type: Boolean, default: false },
     },
     { timestamps: true },
   )

@@ -5,13 +5,17 @@ import { Chart, registerables } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import { fetchSummary } from '../state/store';
 import ExpenseModal from '../components/ExpenseModal';
-import { COLORS, inr, fmtDate } from '../utils';
+import { getChartColors, getThemeAccent, getThemeAccentHover, inr, fmtDate } from '../utils';
 Chart.register(...registerables);
 export default function Dashboard() {
+  const colorTheme = useSelector((state) => state.colorTheme);
+  const appearance = useSelector((state) => state.theme);
+  const customAccent = useSelector((state) => state.customAccent);
   const d = useDispatch(),
     { data: s, loading } = useSelector((x) => x.dash),
     [p, setP] = useState({ m: new Date().getMonth() + 1, y: new Date().getFullYear() }),
     [modal, setModal] = useState(null);
+  const chartColors = getChartColors(colorTheme, customAccent, appearance);
   const load = () => d(fetchSummary({ month: p.m, year: p.y }));
   useEffect(() => {
     load();
@@ -26,8 +30,10 @@ export default function Dashboard() {
     hd = s?.highestSpendingDay,
     income = s?.totalMonthIncome || 0,
     expense = s?.totalMonthExpense || 0,
+    openingBalance = s?.openingBalance || 0,
+    availableFunds = s?.availableFunds ?? openingBalance + income,
     balance = s?.remainingBalance ?? income - expense,
-    savingsRate = income ? Math.round((balance / income) * 100) : 0;
+    savingsRate = availableFunds ? Math.round((balance / availableFunds) * 100) : 0;
   const cards = [
     ['Income this month', income, 'bi-arrow-down-left'],
     ['Expenses this month', expense, 'bi-arrow-up-right'],
@@ -36,7 +42,7 @@ export default function Dashboard() {
   ];
   return (
     <>
-      <div className="page-heading">
+      <div className="page-heading dashboard-hero">
         <div>
           <span className="eyebrow">YOUR MONEY, AT A GLANCE</span>
           <h1>Overview</h1>
@@ -46,7 +52,7 @@ export default function Dashboard() {
           <i className="bi bi-plus-lg" /> Add expense
         </button>
       </div>
-      <div className="period-bar">
+      <div className="period-bar dashboard-period">
         <div className="period-label">
           <span className="eyebrow">MONTHLY VIEW</span>
           <h3>
@@ -68,10 +74,10 @@ export default function Dashboard() {
         </div>
       ) : (
         <>
-          <div className="row g-3 metric-grid">
+          <div className="row g-3 metric-grid dashboard-metrics">
             {cards.map(([t, v, icon], i) => (
               <div className="col-6 col-xl-3" key={t}>
-                <div className={'metric-card metric-' + i}>
+                <div className={'metric-card dashboard-metric metric-' + i}>
                   <div className="metric-top">
                     <span>{t}</span>
                     <i className={'bi ' + icon} />
@@ -79,7 +85,7 @@ export default function Dashboard() {
                   <strong>{i === 3 ? v : inr(v)}</strong>
                   <small>
                     {
-                      ['Money received', 'Money spent', 'Income minus expenses', 'Of income left'][
+                      ['Money received this month', 'Money spent this month', 'Carryover + income − expenses', 'Of available funds left'][
                         i
                       ]
                     }
@@ -88,9 +94,9 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
-          <div className="row g-3 chart-grid">
+          <div className="row g-3 chart-grid dashboard-charts">
             <div className="col-lg-8">
-              <section className="panel chart-panel">
+              <section className="panel chart-panel dashboard-panel dashboard-spending-panel">
                 <div className="panel-heading">
                   <div>
                     <span className="eyebrow">DAILY ACTIVITY</span>
@@ -115,8 +121,8 @@ export default function Dashboard() {
                                 `${p.y}-${String(p.m).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`
                               ] || 0,
                           ),
-                          backgroundColor: '#4f6bff',
-                          hoverBackgroundColor: '#3552dc',
+                          backgroundColor: getThemeAccent(colorTheme, appearance, customAccent),
+                          hoverBackgroundColor: getThemeAccentHover(colorTheme, appearance, customAccent),
                           borderRadius: 5,
                           maxBarThickness: 22,
                         },
@@ -139,7 +145,7 @@ export default function Dashboard() {
               </section>
             </div>
             <div className="col-lg-4">
-              <section className="panel item-panel">
+              <section className="panel item-panel dashboard-panel dashboard-item-panel">
                 <div className="panel-heading">
                   <div>
                     <span className="eyebrow">WHERE IT GOES</span>
@@ -155,7 +161,7 @@ export default function Dashboard() {
                           datasets: [
                             {
                               data: items.map((c) => c.total),
-                              backgroundColor: COLORS,
+                              backgroundColor: chartColors,
                               borderWidth: 3,
                               borderColor: 'var(--panel)',
                               hoverOffset: 5,
@@ -173,7 +179,7 @@ export default function Dashboard() {
                       {items.slice(0, 5).map((c, i) => (
                         <div key={c._id}>
                           <span>
-                            <i style={{ background: COLORS[i % COLORS.length] }} />
+                            <i style={{ background: chartColors[i % chartColors.length] }} />
                             {c._id}
                           </span>
                           <b>{inr(c.total)}</b>
@@ -187,9 +193,9 @@ export default function Dashboard() {
               </section>
             </div>
           </div>
-          <div className="row g-3 lower-grid">
+          <div className="row g-3 lower-grid dashboard-lower">
             <div className="col-lg-8">
-              <section className="panel recent-panel">
+              <section className="panel recent-panel dashboard-panel dashboard-recent-panel">
                 <div className="panel-heading">
                   <div>
                     <span className="eyebrow">LATEST ACTIVITY</span>
@@ -226,7 +232,7 @@ export default function Dashboard() {
               </section>
             </div>
             <div className="col-lg-4">
-              <section className="panel top-items">
+              <section className="panel top-items dashboard-panel dashboard-top-items">
                 <div className="panel-heading">
                   <div>
                     <span className="eyebrow">THIS MONTH</span>

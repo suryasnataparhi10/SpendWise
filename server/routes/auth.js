@@ -9,7 +9,7 @@ const { ok, fail, wrap } = require('../utils/http');
 const router = express.Router();
 const sign = (user) => ({
   token: jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' }),
-  user: { id: user._id, name: user.name, email: user.email },
+  user: { id: user._id, name: user.name, email: user.email, avatar: user.avatar || '' },
 });
 
 router.post(
@@ -101,6 +101,25 @@ router.get(
     const user = await User.findById(req.uid).select('-password');
     if (!user) throw fail(401, 'Not authorized');
     ok(res, user);
+  }),
+);
+router.patch(
+  '/profile',
+  auth,
+  wrap(async (req, res) => {
+    const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+    const avatar = req.body.avatar;
+    if (!name || name.length > 60) throw fail(400, 'Name must be between 1 and 60 characters');
+    if (avatar !== undefined && avatar !== '' &&
+      (typeof avatar !== 'string' || !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/.test(avatar) || avatar.length > 900_000)) {
+      throw fail(400, 'Choose a valid image smaller than 650 KB');
+    }
+    const user = await User.findById(req.uid);
+    if (!user) throw fail(401, 'Not authorized');
+    user.name = name;
+    if (avatar !== undefined) user.avatar = avatar;
+    await user.save();
+    ok(res, { id: user._id, name: user.name, email: user.email, avatar: user.avatar || '' }, 'Profile updated');
   }),
 );
 module.exports = router;
