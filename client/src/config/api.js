@@ -3,7 +3,7 @@ const API_BASE_URLS = {
   render: 'https://spendwise-api-97wv.onrender.com/api',
 };
 
-const selectedTarget = import.meta.env.VITE_API_TARGET === 'render' ? 'render' : 'local';
+const selectedTarget = import.meta.env.VITE_API_TARGET === 'local' ? 'local' : 'render';
 
 // VITE_API_URL can override either target for another backend.
 export const API_BASE_URL = (import.meta.env.VITE_API_URL || API_BASE_URLS[selectedTarget]).replace(/\/$/, '');
