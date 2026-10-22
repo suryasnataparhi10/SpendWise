@@ -11,7 +11,7 @@ A MERN expense tracker with JWT authentication, per user expenses, dashboard sum
 
 Password reset links expire after 30 minutes and can be used once. The frontend defaults to `http://localhost:5173` for reset links; set `CLIENT_URL` to the deployed frontend origin when hosting the app.
 
-The website uses one shared API base URL from `client/src/config/api.js`. It defaults to the local URL (`http://localhost:5000/api`); set `VITE_API_TARGET=render` to use `https://spendwise-api-97wv.onrender.com/api`, or set `VITE_API_URL` to override either target. The mobile app defaults to the local API and can be configured with `EXPO_PUBLIC_API_URL`.
+For local development, the API defaults to `http://localhost:5000/api`. In Vercel, set `VITE_API_URL` to the deployed API URL ending in `/api`.
 
 ## Deploy to GitHub and Vercel
 
@@ -22,7 +22,7 @@ GitHub stores the source code. Vercel hosts the React website and Express API, w
 3. In Vercel, import the GitHub repository twice. For the website project, set **Root Directory** to `client`; Vercel will build the Vite app using `client/vercel.json` for React Router deep links.
 4. For the API project, import the same repository and set **Root Directory** to `server`. Vercel detects the Express app from `server.js`; `server/vercel.json` configures the protected scheduled-job endpoint.
 5. Set these API project environment variables in Vercel for Production and Preview as needed: `MONGO_URI`, a strong unique `JWT_SECRET`, the website's exact origin as `CLIENT_URL`, and a strong random `CRON_SECRET`. Add `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, and `HIDDEN_EXPENSE_RECOVERY_EMAIL` for email features.
-6. If deploying a different API, set `VITE_API_URL` in the website project's environment variables to its URL followed by `/api`, then redeploy the website.
+6. After the API deploys, copy its URL. In the website project's environment variables, set `VITE_API_URL` to that URL followed by `/api`, for example `https://spendwise-api.vercel.app/api`. Redeploy the website after adding the variable.
 7. Add the website's Vercel domain to MongoDB Atlas network access and check that `CLIENT_URL` exactly matches the website origin (no `/api` suffix). Both projects will deploy automatically from their connected GitHub branch.
 
 The included Vercel Cron runs scheduled reminders and queued recovery emails daily so it can deploy on Vercel Hobby. Hobby schedules have daily precision, so reminders may arrive late. For minute-accurate reminders, use a Vercel plan that supports per-minute cron runs and change the schedule in `server/vercel.json` to `* * * * *`, or use a separate scheduled-job provider. Cron requests are protected by `CRON_SECRET`.
