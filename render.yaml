@@ -10,9 +10,13 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: MONGO_URI
+      - key: MONGODB_URI
         sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: CLIENT_URL
         sync: false
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: MIGRATION_ENCRYPTION_KEY
+        generateValue: true

@@ -7,7 +7,7 @@ import CalendarInput from './CalendarInput';
 import AmountInput from './AmountInput';
 import PaymentMethodSelect from './PaymentMethodSelect';
 import { PAY, today } from '../utils';
-
+import Icon from '../theme/Icon';
 function ExpenseField({ field, label, error, children }) {
   return (
     <div>
@@ -137,6 +137,16 @@ export default function ExpenseModal({ item, onClose, onSaved, history = [] }) {
       setSaving(false);
     }
   };
+  const footerRows = groups.flatMap((group) => group.rows);
+  const footerCount = footerRows.length;
+  const footerTotal = footerRows.reduce(
+    (total, row) =>
+      total +
+      (row.hasSubtypes
+        ? row.subtypes.reduce((sum, sub) => sum + (Number(sub.amount) || 0), 0)
+        : Number(row.amount) || 0),
+    0,
+  );
   return createPortal(
     <div className="modal d-block modal-backdrop-custom">
       <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl">
@@ -162,7 +172,7 @@ export default function ExpenseModal({ item, onClose, onSaved, history = [] }) {
                   setGroups((old) => [...old, nextGroup]);
                   setActiveGroup(groups.length);
                 }}>
-                  <i className="bi bi-plus-lg me-1" /> Add expenses for another date
+                  <Icon name="add" className="me-1" /> Add expenses for another date
                 </button>
               </div>
             </div>}
@@ -176,7 +186,7 @@ export default function ExpenseModal({ item, onClose, onSaved, history = [] }) {
                 <button type="button" className="btn btn-light text-danger" onClick={() => {
                   setGroups((old) => old.filter((_, index) => index !== activeGroup));
                   setActiveGroup((index) => Math.max(0, index - 1));
-                }}><i className="bi bi-trash3 me-1" /> Remove this date</button>
+                }}><Icon name="delete" className="me-1" /> Remove this date</button>
               </div>}
             </div>
             <div className="batch-title">
@@ -241,7 +251,7 @@ export default function ExpenseModal({ item, onClose, onSaved, history = [] }) {
                               .toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
                           </small>
                         </span>
-                        <i className={`bi ${row.expanded ? 'bi-dash-lg' : 'bi-plus-lg'}`} />
+                        <Icon name={row.expanded ? 'minus' : 'add'} />
                       </button>
                       {row.expanded && (
                         <div className="subtype-list">
@@ -273,6 +283,7 @@ export default function ExpenseModal({ item, onClose, onSaved, history = [] }) {
                               />
                               <PaymentMethodSelect
                                 className="form-select-wrap"
+                                align="end"
                                 ariaLabel="Subtype payment method"
                                 value={sub.paymentMethod}
                                 options={PAY}
@@ -292,7 +303,7 @@ export default function ExpenseModal({ item, onClose, onSaved, history = [] }) {
                                   )
                                 }
                               >
-                                <i className="bi bi-x-lg" />
+                                <Icon name="close" />
                               </button>
                               {(errors[`subtype-type-${activeGroup}-${index}-${subIndex}`] ||
                                 errors[`subtype-amount-${activeGroup}-${index}-${subIndex}`]) && (
@@ -313,7 +324,7 @@ export default function ExpenseModal({ item, onClose, onSaved, history = [] }) {
                               ])
                             }
                           >
-                            <i className="bi bi-plus-lg" /> Add subtype
+                            <Icon name="add" /> Add subtype
                           </button>
                         </div>
                       )}
@@ -359,7 +370,7 @@ export default function ExpenseModal({ item, onClose, onSaved, history = [] }) {
                       aria-label="Remove item"
                       onClick={() => setGroups((old) => old.map((group, groupIndex) => groupIndex === activeGroup ? { ...group, rows: group.rows.filter((_, i) => i !== index) } : group))}
                     >
-                      <i className="bi bi-x-lg" />
+                      <Icon name="close" />
                     </button>
                   )}
                 </div>
@@ -372,7 +383,7 @@ export default function ExpenseModal({ item, onClose, onSaved, history = [] }) {
                 className="add-item-bottom"
                 onClick={() => setGroups((old) => old.map((group, groupIndex) => groupIndex === activeGroup ? { ...group, rows: [...group.rows, blankRow()] } : group))}
               >
-                <i className="bi bi-plus-circle me-2" />
+                <Icon name="addCircle" className="me-2" />
                 Add another item
               </button>
             )}
@@ -389,32 +400,27 @@ export default function ExpenseModal({ item, onClose, onSaved, history = [] }) {
             />
           </div>
           <div className="modal-footer">
-            <span className="batch-total">
-              {groups.reduce((sum, group) => sum + group.rows.length, 0)} {groups.reduce((sum, group) => sum + group.rows.length, 0) === 1 ? 'expense' : 'expenses'} ·{' '}
-              {groups.flatMap((group) => group.rows)
-                .reduce(
-                  (total, row) =>
-                    total +
-                    (row.hasSubtypes
-                      ? row.subtypes.reduce((sum, sub) => sum + (Number(sub.amount) || 0), 0)
-                      : Number(row.amount) || 0),
-                  0,
-                )
-                .toLocaleString('en-IN', {
+            <button type="button" className="btn btn-light" onClick={onClose}>
+              Cancel
+            </button>
+            <div className="batch-total" aria-live="polite">
+              <small>
+                Total · {footerCount} {footerCount === 1 ? 'expense' : 'expenses'}
+              </small>
+              <strong>
+                {footerTotal.toLocaleString('en-IN', {
                   style: 'currency',
                   currency: 'INR',
                   minimumFractionDigits: 2,
                 })}
-            </span>
-            <button type="button" className="btn btn-light" onClick={onClose}>
-              Cancel
-            </button>
+              </strong>
+            </div>
             <button disabled={saving} className="btn btn-primary">
               {saving
                 ? 'Saving…'
                 : editing
                   ? 'Save changes'
-                  : `Save ${groups.reduce((sum, group) => sum + group.rows.length, 0)} ${groups.reduce((sum, group) => sum + group.rows.length, 0) === 1 ? 'expense' : 'expenses'}`}
+                  : `Save ${footerCount} ${footerCount === 1 ? 'expense' : 'expenses'}`}
             </button>
           </div>
         </form>

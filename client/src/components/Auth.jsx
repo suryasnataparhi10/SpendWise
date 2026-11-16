@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { authenticate, requestPasswordReset, resetPassword } from '../state/store';
 import PasswordInput from './PasswordInput';
-
+import Icon from '../theme/Icon';
 const copy = {
   login: {
     eyebrow: 'WELCOME BACK',
@@ -35,23 +35,56 @@ function Brand({ light = false }) {
   return (
     <Link className={`brand${light ? ' brand-light' : ''}`} to="/login">
       <span className="brand-mark">
-        <i className="bi bi-wallet2" />
+        <Icon name="wallet" />
       </span>
       pocketwise
     </Link>
   );
 }
 
+const particles = Array.from({ length: 14 }, (_, index) => index);
+
 function Story() {
+  const story = useRef(null);
+  const frame = useRef(0);
+  // Feed the pointer position to CSS so the illustration layers drift with the cursor.
+  const tilt = (event) => {
+    const node = story.current;
+    if (!node || frame.current) return;
+    const { clientX, clientY } = event;
+    frame.current = requestAnimationFrame(() => {
+      frame.current = 0;
+      const rect = node.getBoundingClientRect();
+      node.style.setProperty('--mx', ((clientX - rect.left) / rect.width - 0.5).toFixed(3));
+      node.style.setProperty('--my', ((clientY - rect.top) / rect.height - 0.5).toFixed(3));
+    });
+  };
+  const reset = () => {
+    story.current?.style.setProperty('--mx', 0);
+    story.current?.style.setProperty('--my', 0);
+  };
   return (
-    <section className="auth-story">
+    <section className="auth-story" ref={story} onPointerMove={tilt} onPointerLeave={reset}>
+      <div className="story-aurora" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </div>
+      <div className="story-particles" aria-hidden="true">
+        {particles.map((index) => (
+          <i key={index} style={{ '--i': index, '--size': `${3 + ((index * 3) % 5)}px` }} />
+        ))}
+      </div>
       <Brand light />
       <div className="story-copy">
         <span className="eyebrow">A clearer view of your money</span>
         <h1>
-          Small expenses.
-          <br />
-          <em>Big picture.</em>
+          <span className="story-line">
+            <span>Small expenses.</span>
+          </span>
+          <span className="story-line">
+            <em>Big picture.</em>
+          </span>
         </h1>
         <p>A calm place to keep track of what you spend, one item at a time.</p>
         <div className="story-stat">
@@ -64,7 +97,7 @@ function Story() {
         <div className="scene-coin coin-back">₹</div>
         <div className="scene-receipt">
           <div className="receipt-head">
-            <i className="bi bi-bag-heart-fill" />
+            <Icon name="shoppingHeart" />
             <span>today</span>
           </div>
           <div className="receipt-line wide" />
@@ -101,6 +134,8 @@ export default function Auth({ mode }) {
   const { token } = useParams();
   const [form, setForm] = useState({ name: '', email: '', password: '', confirm: '' });
   const [error, setError] = useState('');
+  const [errorCount, setErrorCount] = useState(0);
+  const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState(
     location.state?.passwordReset ? 'Password updated. You can now sign in.' : '',
   );
@@ -112,10 +147,16 @@ export default function Auth({ mode }) {
     setError('');
   };
 
+  const fail = (message) => {
+    setError(message);
+    setErrorCount((count) => count + 1);
+  };
+
   const submit = async (event) => {
     event.preventDefault();
     setError('');
     setSuccess('');
+    setBusy(true);
 
     try {
       if (mode === 'login' || mode === 'register') {
@@ -126,18 +167,20 @@ export default function Auth({ mode }) {
         setSuccess(result.message);
       } else {
         if (form.password.length < 6) {
-          setError('Password must be at least 6 characters.');
+          fail('Password must be at least 6 characters.');
           return;
         }
         if (form.password !== form.confirm) {
-          setError('The passwords do not match.');
+          fail('The passwords do not match.');
           return;
         }
         await dispatch(resetPassword({ token, password: form.password })).unwrap();
         navigate('/login', { state: { passwordReset: true } });
       }
     } catch (reason) {
-      setError(String(reason));
+      fail(String(reason));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -153,7 +196,13 @@ export default function Auth({ mode }) {
         <div className="auth-mobile-brand">
           <Brand />
         </div>
-        <form className="auth-form" onSubmit={submit}>
+        <form
+          key={mode}
+          className={`auth-form${error ? ' has-error' : ''}`}
+          data-shake={errorCount % 2}
+          onSubmit={submit}
+          aria-busy={busy}
+        >
           <span className="eyebrow">{details.eyebrow}</span>
           <h2>{details.title}</h2>
           <p className="muted">{details.description}</p>
@@ -218,12 +267,23 @@ export default function Auth({ mode }) {
               <Link to="/forgot-password">Forgot password?</Link>
             </div>
           )}
-          {error && <div className="alert alert-danger py-2">{error}</div>}
-          {success && <div className="alert alert-success py-2">{success}</div>}
+          {error && (
+            <div key={errorCount} className="alert alert-danger py-2 auth-alert" role="alert">
+              {error}
+            </div>
+          )}
+          {success && (
+            <div className="alert alert-success py-2 auth-alert" role="status">
+              {success}
+            </div>
+          )}
 
-          <button className="btn btn-primary auth-submit">
-            {details.button}
-            <i className="bi bi-arrow-right ms-2" />
+          <button className={`btn btn-primary auth-submit${busy ? ' is-busy' : ''}`} disabled={busy}>
+            <span className="auth-submit-label">
+              {details.button}
+              <Icon name="arrowRight" className="ms-2 auth-submit-arrow" />
+            </span>
+            {busy && <span className="auth-spinner" aria-label="Please wait" />}
           </button>
 
           <p className="auth-switch">

@@ -1,0 +1,9 @@
+/* Cascade order: later layers win regardless of selector specificity, so the theme engine
+   always has the final say over Bootstrap and the legacy app styles. */
+@layer bootstrap, legacy, theme;
+@import 'bootstrap/dist/css/bootstrap.min.css' layer(bootstrap);
+@import 'bootstrap-icons/font/bootstrap-icons.css' layer(bootstrap);
+@import './global.css' layer(legacy);
+@import './interactions.css' layer(legacy);
+@import './theme-engine.css' layer(theme);
+@import './theme-gallery.css' layer(theme);

@@ -4,7 +4,13 @@
   "main": "server.js",
   "scripts": {
     "dev": "node --watch server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "db:setup": "node scripts/setup-mongodb.js",
+    "db:backup-mongodb": "node scripts/backup-mongodb.js",
+    "db:restore-mongodb": "node scripts/restore-mongodb-backup.js",
+    "db:migrate-postgres": "node scripts/migrate-postgres-to-mongodb.js",
+    "test:api": "node scripts/test-api.js",
+    "test:migration-center": "node scripts/test-migration-center.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -12,8 +18,10 @@
     "dotenv": "^16.6.1",
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.5.0",
+    "mongodb": "^6.22.0",
     "node-cron": "^4.6.0",
-    "nodemailer": "^10.0.13"
+    "nodemailer": "^10.0.13",
+    "pg": "^8.23.1",
+    "spendwise": "file:.."
   }
 }

@@ -2,14 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Bar } from 'react-chartjs-2';
 import { fetchReport } from '../state/store';
-import { getThemeAccent, getThemeAccentHover, inr } from '../utils';
+import Icon from '../theme/Icon';
+import { useChartTheme } from '../theme/chartTheme';
+import { inr } from '../utils';
 
 export default function Reports() {
   const dispatch = useDispatch();
   const { data: months, loading } = useSelector((state) => state.reports);
-  const colorTheme = useSelector((state) => state.colorTheme);
-  const appearance = useSelector((state) => state.theme);
-  const customAccent = useSelector((state) => state.customAccent);
+  const { chartColors, tokens, barRadius } = useChartTheme();
   const [year, setYear] = useState(new Date().getFullYear());
 
   useEffect(() => {
@@ -37,15 +37,15 @@ export default function Reports() {
       {
         label: 'Income',
         data: (months || []).map((month) => month.income),
-        backgroundColor: getThemeAccent(colorTheme, appearance, customAccent),
-        borderRadius: 5,
+        backgroundColor: chartColors[0],
+        borderRadius: barRadius,
         maxBarThickness: 28,
       },
       {
         label: 'Expenses',
         data: (months || []).map((month) => month.expenses),
-        backgroundColor: getThemeAccentHover(colorTheme, appearance, customAccent),
-        borderRadius: 5,
+        backgroundColor: chartColors[1],
+        borderRadius: barRadius,
         maxBarThickness: 28,
       },
     ],
@@ -58,7 +58,7 @@ export default function Reports() {
       x: { grid: { display: false } },
       y: {
         beginAtZero: true,
-        grid: { color: 'rgba(90,100,90,.1)' },
+        grid: { color: tokens['--scene-grid'] },
         ticks: { callback: (value) => `₹${value}` },
       },
     },
@@ -88,9 +88,9 @@ export default function Reports() {
 
       <div className="row g-3 metric-grid section-metrics">
         {[
-          ['Income', totals.income, 'bi-arrow-down-left'],
-          ['Expenses', totals.expenses, 'bi-arrow-up-right'],
-          ['Net savings', totals.net, 'bi-piggy-bank'],
+          ['Income', totals.income, 'incoming'],
+          ['Expenses', totals.expenses, 'outgoing'],
+          ['Net savings', totals.net, 'savings'],
         ].map(([label, amount, icon]) => (
           <div className="col-md-4" key={label}>
             <div className="metric-card report-metric section-metric">
@@ -98,7 +98,7 @@ export default function Reports() {
                 <span>
                   {label} · {year}
                 </span>
-                <i className={`bi ${icon}`} />
+                <Icon name={icon} />
               </div>
               <strong>{inr(amount)}</strong>
               <small>

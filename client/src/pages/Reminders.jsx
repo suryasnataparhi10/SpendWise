@@ -3,15 +3,17 @@ import { useDispatch, useSelector } from 'react-redux';
 import {
   addReminder,
   deleteReminder,
+  deleteReminderPayment,
   deleteReminders,
   fetchReminders,
+  recordReminderPayment,
   updateReminder,
 } from '../state/store';
 import { inr, today } from '../utils';
 import CalendarInput from '../components/CalendarInput';
 import AmountInput from '../components/AmountInput';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
-
+import Icon from '../theme/Icon';
 const emptyReminder = () => ({ title: '', dueDate: today(), amount: '' });
 
 export default function Reminders() {
@@ -20,6 +22,10 @@ export default function Reminders() {
   const [form, setForm] = useState(emptyReminder());
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [paymentAmounts, setPaymentAmounts] = useState({});
+  const [paymentErrors, setPaymentErrors] = useState({});
+  const [savingPaymentId, setSavingPaymentId] = useState(null);
+  const [deletingPaymentId, setDeletingPaymentId] = useState(null);
   const [selectedReminderIds, setSelectedReminderIds] = useState(() => new Set());
   const [deleteConfirmation, setDeleteConfirmation] = useState(null);
   useEffect(() => {
@@ -74,6 +80,74 @@ export default function Reminders() {
     if (due < today()) return { label: 'Overdue', className: 'reminder-overdue' };
     if (due === today()) return { label: 'Due today', className: 'reminder-today' };
     return { label: 'Upcoming', className: 'reminder-upcoming' };
+  };
+
+  const submitPayment = async (event, reminder) => {
+    event.preventDefault();
+    const amount = paymentAmounts[reminder._id] || '';
+    setPaymentErrors((current) => ({ ...current, [reminder._id]: '' }));
+    setSavingPaymentId(reminder._id);
+    try {
+      await dispatch(recordReminderPayment({ id: reminder._id, amount: Number(amount) })).unwrap();
+      setPaymentAmounts((current) => ({ ...current, [reminder._id]: '' }));
+      dispatch(fetchReminders());
+    } catch (reason) {
+      setPaymentErrors((current) => ({ ...current, [reminder._id]: String(reason) }));
+    } finally {
+      setSavingPaymentId(null);
+    }
+  };
+
+  const confirmDeletePayment = (reminder, payment) => {
+    setDeleteConfirmation({
+      title: 'Delete this payment?',
+      description: `Remove the ${inr(payment.amount)} payment from ${reminder.title}? The paid total and remaining balance will be updated.`,
+      confirmLabel: 'Delete payment',
+      onConfirm: async () => {
+        setDeletingPaymentId(payment._id);
+        try {
+          await dispatch(
+            deleteReminderPayment({ id: reminder._id, paymentId: payment._id }),
+          ).unwrap();
+          await dispatch(fetchReminders()).unwrap();
+          setDeleteConfirmation(null);
+        } catch (reason) {
+          setPaymentErrors((current) => ({ ...current, [reminder._id]: String(reason) }));
+          setDeleteConfirmation(null);
+        } finally {
+          setDeletingPaymentId(null);
+        }
+      },
+    });
+  };
+
+  const toggleReminder = async (reminder) => {
+    if (reminder.completed) {
+      setDeleteConfirmation({
+        title: 'Mark this reminder unpaid?',
+        description: 'This will remove all recorded payments from this reminder.',
+        eyebrow: 'CONFIRM PAYMENT RESET',
+        confirmLabel: 'Remove payments and mark unpaid',
+        onConfirm: async () => {
+          try {
+            await dispatch(
+              updateReminder({ id: reminder._id, completed: false }),
+            ).unwrap();
+            await dispatch(fetchReminders()).unwrap();
+          } catch (reason) {
+            setPaymentErrors((current) => ({ ...current, [reminder._id]: String(reason) }));
+          }
+          setDeleteConfirmation(null);
+        },
+      });
+      return;
+    }
+    try {
+      await dispatch(updateReminder({ id: reminder._id, completed: true })).unwrap();
+      await dispatch(fetchReminders()).unwrap();
+    } catch (reason) {
+      setPaymentErrors((current) => ({ ...current, [reminder._id]: String(reason) }));
+    }
   };
 
   return (
@@ -161,7 +235,7 @@ export default function Reminders() {
                 disabled={!selectedReminderIds.size}
                 onClick={deleteSelectedReminders}
               >
-                <i className="bi bi-trash3" /> Delete selected
+                <Icon name="delete" /> Delete selected
               </button>
             </div>
           )}
@@ -173,6 +247,11 @@ export default function Reminders() {
             <div className="reminder-list">
               {sorted.map((reminder) => {
                 const dueStatus = status(reminder);
+                const paidAmount = Number(reminder.paidAmount || 0);
+                const remainingAmount =
+                  reminder.amount == null
+                    ? null
+                    : Math.max(0, Math.round((Number(reminder.amount) - paidAmount) * 100) / 100);
                 return (
                   <article
                     className={`reminder-card ${reminder.completed ? 'is-complete' : ''}`}
@@ -193,7 +272,7 @@ export default function Reminders() {
                       }
                     />
                     <span className={`reminder-date-icon ${dueStatus.className}`}>
-                      <i className="bi bi-calendar-event" />
+                      <Icon name="event" />
                     </span>
                     <div className="reminder-copy">
                       <div>
@@ -209,21 +288,86 @@ export default function Reminders() {
                           year: 'numeric',
                           timeZone: 'UTC',
                         })}
-                        {reminder.amount ? ` · ${inr(reminder.amount)}` : ''}
+                        {reminder.amount != null ? ` · ${inr(reminder.amount)}` : ''}
                       </small>
+                      {remainingAmount != null && (
+                        <>
+                          <small className="reminder-payment-summary">
+                            Paid {inr(paidAmount)} · Remaining {inr(remainingAmount)}
+                          </small>
+                          {remainingAmount > 0 && (
+                            <form
+                              className="reminder-payment"
+                              onSubmit={(event) => submitPayment(event, reminder)}
+                            >
+                              <div className="input-group">
+                                <span className="input-group-text">₹</span>
+                                <AmountInput
+                                  className="form-control"
+                                  placeholder="Payment amount"
+                                  aria-label={`Payment amount for ${reminder.title}`}
+                                  value={paymentAmounts[reminder._id] || ''}
+                                  onChange={(event) =>
+                                    setPaymentAmounts((current) => ({
+                                      ...current,
+                                      [reminder._id]: event.target.value,
+                                    }))
+                                  }
+                                  required
+                                />
+                              </div>
+                              <button
+                                className="btn btn-outline-primary btn-sm"
+                                disabled={savingPaymentId === reminder._id}
+                              >
+                                {savingPaymentId === reminder._id ? 'Saving...' : 'Add payment'}
+                              </button>
+                            </form>
+                          )}
+                          {!!reminder.payments?.length && (
+                            <div className="reminder-payment-history">
+                              <small>Payment history</small>
+                              {reminder.payments.map((payment) => (
+                                <div className="reminder-payment-row" key={payment._id}>
+                                  <span>
+                                    {inr(payment.amount)} ·{' '}
+                                    {new Date(payment.paidAt).toLocaleDateString('en-IN', {
+                                      day: 'numeric',
+                                      month: 'short',
+                                      year: 'numeric',
+                                      timeZone: 'UTC',
+                                    })}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="icon-button danger"
+                                    aria-label={`Delete ${inr(payment.amount)} payment for ${reminder.title}`}
+                                    title="Delete payment"
+                                    disabled={deletingPaymentId === payment._id}
+                                    onClick={() => confirmDeletePayment(reminder, payment)}
+                                  >
+                                    <Icon name="delete" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {paymentErrors[reminder._id] && (
+                            <span className="reminder-payment-error" role="alert">
+                              {paymentErrors[reminder._id]}
+                            </span>
+                          )}
+                        </>
+                      )}
                     </div>
                     <div className="reminder-actions">
                       <button
                         className={`icon-button ${reminder.completed ? 'reminder-unpay-action' : ''}`}
                         title={reminder.completed ? 'Mark as unpaid' : 'Mark as paid'}
                         aria-label={reminder.completed ? 'Mark as unpaid' : 'Mark as paid'}
-                        onClick={() =>
-                          dispatch(updateReminder({ id: reminder._id, completed: !reminder.completed }))
-                            .unwrap()
-                            .then(() => dispatch(fetchReminders()))
-                        }
+                        onClick={() => toggleReminder(reminder)}
                       >
-                        <i className={`bi ${reminder.completed ? 'bi-arrow-counterclockwise' : 'bi-check2-circle'}`} />
+                        <Icon name={reminder.completed ? 'undo' : 'checkCircle'} />
                       </button>
                       <button
                         className="icon-button danger"
@@ -248,7 +392,7 @@ export default function Reminders() {
                               .catch(() => setDeleteConfirmation(null)),
                         })}
                       >
-                        <i className="bi bi-trash3" />
+                        <Icon name="delete" />
                       </button>
                     </div>
                   </article>
@@ -257,7 +401,7 @@ export default function Reminders() {
             </div>
           ) : (
             <div className="finance-empty">
-              <i className="bi bi-calendar2-check" />
+              <Icon name="reminders" />
               <p>No reminders yet. Add a due date to keep it on your radar.</p>
             </div>
           )}

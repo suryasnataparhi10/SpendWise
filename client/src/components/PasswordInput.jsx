@@ -1,5 +1,5 @@
 import { useState } from 'react';
-
+import Icon from '../theme/Icon';
 export default function PasswordInput({ className = 'form-control', wrapperClassName = '', ...props }) {
   const [visible, setVisible] = useState(false);
   return (
@@ -12,7 +12,7 @@ export default function PasswordInput({ className = 'form-control', wrapperClass
         aria-pressed={visible}
         onClick={() => setVisible((current) => !current)}
       >
-        <i className={`bi ${visible ? 'bi-eye-slash' : 'bi-eye'}`} aria-hidden="true" />
+        <Icon name={visible ? 'hide' : 'show'} />
       </button>
     </div>
   );

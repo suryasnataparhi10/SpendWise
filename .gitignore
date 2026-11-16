@@ -5,6 +5,7 @@
 server/.env
 client/.env
 mobile/.env
+server/migration-data/
 
 # Installed dependencies and generated output
 **/node_modules/

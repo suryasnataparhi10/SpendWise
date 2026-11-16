@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-
+import { useRef, useState } from 'react';
+import Icon from '../theme/Icon';
+import FloatingPanel from './FloatingPanel';
 export default function TimePicker({ value, onChange }) {
   const [open, setOpen] = useState(false);
   const root = useRef(null);
@@ -7,19 +8,6 @@ export default function TimePicker({ value, onChange }) {
   const hour24 = Number(rawHour) % 24;
   const period = hour24 >= 12 ? 'PM' : 'AM';
   const hour12 = hour24 % 12 || 12;
-
-  useEffect(() => {
-    const closeOutside = (event) => {
-      if (!root.current?.contains(event.target)) setOpen(false);
-    };
-    const closeEscape = (event) => event.key === 'Escape' && setOpen(false);
-    document.addEventListener('mousedown', closeOutside);
-    document.addEventListener('keydown', closeEscape);
-    return () => {
-      document.removeEventListener('mousedown', closeOutside);
-      document.removeEventListener('keydown', closeEscape);
-    };
-  }, []);
 
   const update = (nextHour, nextMinute, nextPeriod) => {
     let hour = Number(nextHour) % 12;
@@ -37,10 +25,17 @@ export default function TimePicker({ value, onChange }) {
         onClick={() => setOpen((current) => !current)}
       >
         <span>{String(hour12).padStart(2, '0')}:{rawMinute} <small>{period}</small></span>
-        <i className="bi bi-clock" aria-hidden="true" />
+        <Icon name="clock" />
       </button>
-      {open && (
-        <div className="time-picker-popover" role="dialog" aria-label="Choose a send time">
+      <FloatingPanel
+        anchor={root}
+        open={open}
+        onClose={() => setOpen(false)}
+        align="end"
+        className="time-picker-popover"
+        role="dialog"
+        aria-label="Choose a send time"
+      >
           <div className="time-picker-heading">
             <span className="eyebrow">SEND TIME</span>
             <strong>{String(hour12).padStart(2, '0')}:{rawMinute} {period}</strong>
@@ -63,8 +58,7 @@ export default function TimePicker({ value, onChange }) {
             </label>
           </div>
           <button type="button" className="btn btn-primary time-picker-done" onClick={() => setOpen(false)}>Done</button>
-        </div>
-      )}
+      </FloatingPanel>
     </div>
   );
 }

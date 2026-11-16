@@ -11,7 +11,7 @@ import {
   setScheduledMessageActive,
   updateScheduledMessage,
 } from '../state/store';
-
+import Icon from '../theme/Icon';
 const templates = {
   love: 'Just wanted to send you a little love, {name}. Thinking of you! 💚',
   greeting: 'Hello {name}, wishing you a lovely day!',
@@ -178,7 +178,7 @@ export default function ScheduledMessages() {
       </div>
       {deliveryStatus && !deliveryStatus.emailConfigured && (
         <div className="message-provider-notice">
-          <i className="bi bi-info-circle" />
+          <Icon name="info" />
           <span>
             Schedules are saved, but delivery is not connected yet. Configure your Gmail SMTP
             settings and app password in the server environment.
@@ -300,7 +300,7 @@ export default function ScheduledMessages() {
               </p>
             )}
             <button className="btn btn-primary" disabled={saving}>
-              <i className="bi bi-send me-2" />
+              <Icon name="send" className="me-2" />
               {saving ? 'Saving schedule...' : editingId ? 'Save changes' : 'Schedule message'}
             </button>
             {editingId && (
@@ -325,7 +325,7 @@ export default function ScheduledMessages() {
             </div>
           ) : !grouped.length ? (
             <div className="finance-empty">
-              <i className="bi bi-send" />
+              <Icon name="send" />
               <p>No messages scheduled yet.</p>
             </div>
           ) : (
@@ -344,7 +344,7 @@ export default function ScheduledMessages() {
                   <article className="scheduled-message-card" key={message._id}>
                     <div className="scheduled-message-card-top">
                       <span className="message-contact-icon">
-                        <i className="bi bi-person-heart" />
+                        <Icon name="recipient" />
                       </span>
                       <div className="scheduled-message-contact">
                         <b>{message.contactName}</b>
@@ -363,10 +363,10 @@ export default function ScheduledMessages() {
                     </p>
                     <div className="scheduled-message-meta">
                       <span>
-                        <i className="bi bi-arrow-repeat" /> {frequencyLabel(message)}
+                        <Icon name="repeat" /> {frequencyLabel(message)}
                       </span>
                       <span>
-                        <i className="bi bi-clock" />{' '}
+                        <Icon name="clock" />{' '}
                         {sentOnce
                           ? new Date(message.lastSentAt).toLocaleString()
                           : new Date(message.nextSendAt).toLocaleString()}
@@ -379,7 +379,7 @@ export default function ScheduledMessages() {
                     )}
                     {message.lastError && (
                       <p className="scheduled-message-error">
-                        <i className="bi bi-exclamation-circle" /> Last attempt failed:{' '}
+                        <Icon name="error" /> Last attempt failed:{' '}
                         {message.lastError}
                       </p>
                     )}
@@ -390,7 +390,7 @@ export default function ScheduledMessages() {
                           disabled={busyId === message._id}
                           onClick={() => beginEdit(message)}
                         >
-                          <i className="bi bi-pencil me-1" /> Edit
+                          <Icon name="edit" className="me-1" /> Edit
                         </button>
                       )}
                       {!sentOnce && (
@@ -409,7 +409,7 @@ export default function ScheduledMessages() {
                         disabled={busyId === message._id}
                         onClick={() => remove(message)}
                       >
-                        <i className="bi bi-trash3" />
+                        <Icon name="delete" />
                       </button>
                     </div>
                   </article>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-
+import Icon from '../theme/Icon';
+import FloatingPanel from './FloatingPanel';
 const pad = (number) => String(number).padStart(2, '0');
 const months = Array.from({ length: 12 }, (_, month) =>
   new Date(2020, month, 1).toLocaleDateString('en-IN', { month: 'short' }),
@@ -25,17 +26,9 @@ export default function CalendarInput({
   const [panel, setPanel] = useState(type === 'month' ? 'months' : 'days');
   useEffect(() => setView(parseValue(value, type)), [value, type]);
   useEffect(() => {
-    if (!open) return undefined;
-    const closeOutside = (event) => {
-      if (!root.current?.contains(event.target)) setOpen(false);
-    };
-    const closeEscape = (event) => event.key === 'Escape' && setOpen(false);
-    document.addEventListener('mousedown', closeOutside);
-    document.addEventListener('keydown', closeEscape);
-    return () => {
-      document.removeEventListener('mousedown', closeOutside);
-      document.removeEventListener('keydown', closeEscape);
-    };
+    if (!open) return;
+    setPanel(type === 'month' ? 'months' : 'days');
+    setView(parseValue(value, type));
   }, [open]);
 
   const choose = (nextValue) => {
@@ -43,11 +36,11 @@ export default function CalendarInput({
     setOpen(false);
   };
   const move = (amount) =>
-    setView((current) =>
-      panel === 'years'
-        ? new Date(current.getFullYear() + amount * 12, current.getMonth(), 1)
-        : new Date(current.getFullYear(), current.getMonth() + amount, 1),
-    );
+    setView((current) => {
+      if (panel === 'years') return new Date(current.getFullYear() + amount * 12, current.getMonth(), 1);
+      if (panel === 'months') return new Date(current.getFullYear() + amount, current.getMonth(), 1);
+      return new Date(current.getFullYear(), current.getMonth() + amount, 1);
+    });
   const showDate = value
     ? parseValue(value, type).toLocaleDateString('en-IN', {
         weekday: type === 'date' ? 'short' : undefined,
@@ -67,7 +60,7 @@ export default function CalendarInput({
   };
   const chooseYear = (year) => {
     setView(new Date(year, view.getMonth(), 1));
-    setPanel(type === 'month' ? 'months' : 'months');
+    setPanel('months');
   };
 
   return (
@@ -90,26 +83,34 @@ export default function CalendarInput({
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
       >
-        <i className="bi bi-calendar3" aria-hidden="true" />
+        <Icon name="calendar" />
       </button>
-      {open && (
-        <div className="calendar-popover" role="dialog" aria-label="Choose a date">
+      <FloatingPanel
+        anchor={root}
+        open={open}
+        onClose={() => setOpen(false)}
+        className="calendar-popover"
+        role="dialog"
+        aria-label={type === 'month' ? 'Choose a month' : 'Choose a date'}
+      >
           <div className="calendar-popover-heading">
             <button type="button" aria-label="Previous" onClick={() => move(-1)}>
-              <i className="bi bi-chevron-left" />
+              <Icon name="chevronLeft" />
             </button>
             <div>
-              {panel !== 'years' && (
+              {panel === 'days' && (
                 <button type="button" onClick={() => setPanel('months')}>
                   {view.toLocaleDateString('en-IN', { month: 'long' })}
                 </button>
               )}
-              <button type="button" onClick={() => setPanel('years')}>
-                {view.getFullYear()}
+              <button type="button" onClick={() => setPanel(panel === 'years' ? 'months' : 'years')}>
+                {panel === 'years'
+                  ? `${view.getFullYear() - 5} – ${view.getFullYear() + 6}`
+                  : view.getFullYear()}
               </button>
             </div>
             <button type="button" aria-label="Next" onClick={() => move(1)}>
-              <i className="bi bi-chevron-right" />
+              <Icon name="chevronRight" />
             </button>
           </div>
           {panel === 'days' && type === 'date' && (
@@ -180,8 +181,7 @@ export default function CalendarInput({
               )}
             </div>
           )}
-        </div>
-      )}
+      </FloatingPanel>
     </span>
   );
 }

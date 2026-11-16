@@ -1,7 +1,8 @@
-const ScheduledMessage = require('../models/ScheduledMessage');
 const cron = require('node-cron');
+const { collection } = require('../db');
 
-const emailReady = () => Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+const emailReady = () =>
+  Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 
 async function send(message) {
   const nodemailer = require('nodemailer');
@@ -22,7 +23,10 @@ async function send(message) {
     return String(address || '').toLowerCase() === String(message.email || '').toLowerCase();
   });
   if (!recipientAccepted) {
-    const rejection = result.rejectedErrors?.[0]?.message || result.response || 'SMTP server did not accept the recipient';
+    const rejection =
+      result.rejectedErrors?.[0]?.message ||
+      result.response ||
+      'SMTP server did not accept the recipient';
     throw new Error(rejection);
   }
   return { messageId: result.messageId, response: result.response };
@@ -93,46 +97,51 @@ function nextOccurrence(message, from) {
   );
 }
 
+// Atomically claims the next due message (the equivalent of FOR UPDATE SKIP LOCKED): only one
+// scheduler instance can set lockedAt on a given message, and stale locks expire after 10 minutes.
+async function claimNextMessage() {
+  const now = new Date();
+  return collection('scheduledMessages').findOneAndUpdate(
+    {
+      active: true,
+      channel: 'email',
+      nextSendAt: { $lte: now },
+      $or: [{ lockedAt: null }, { lockedAt: { $lt: new Date(now.getTime() - 10 * 60 * 1000) } }],
+    },
+    { $set: { lockedAt: now, updatedAt: now } },
+    { sort: { nextSendAt: 1 }, returnDocument: 'after' },
+  );
+}
+
 async function sendDueMessages() {
   if (!emailReady()) return;
   for (let count = 0; count < 25; count++) {
     const now = new Date();
-    const message = await ScheduledMessage.findOneAndUpdate(
-      {
-        active: true,
-        channel: 'email',
-        nextSendAt: { $lte: now },
-        $or: [{ lockedAt: null }, { lockedAt: { $lt: new Date(now.getTime() - 10 * 60 * 1000) } }],
-      },
-      { $set: { lockedAt: now } },
-      { sort: { nextSendAt: 1 }, new: true },
-    );
+    const message = await claimNextMessage();
     if (!message) return;
     try {
       const personalized = message.message.replace(/\{name\}/gi, message.contactName);
-      await send({ ...message.toObject(), message: personalized });
+      await send({ ...message, message: personalized });
       const next = nextOccurrence(message, now);
       const stopAfterSend = !next || (message.endAt && next > message.endAt);
-      await ScheduledMessage.updateOne(
-        { _id: message._id },
-        {
-          $set: {
-            active: !stopAfterSend,
-            lastSentAt: now,
-            lastError: '',
-            lockedAt: null,
-            ...(next && !stopAfterSend ? { nextSendAt: next } : {}),
-          },
-        },
-      );
+      const changes = {
+        active: !stopAfterSend,
+        lastSentAt: now,
+        lastError: '',
+        lockedAt: null,
+        updatedAt: new Date(),
+      };
+      if (next && !stopAfterSend) changes.nextSendAt = next;
+      await collection('scheduledMessages').updateOne({ _id: message._id }, { $set: changes });
     } catch (error) {
-      await ScheduledMessage.updateOne(
+      await collection('scheduledMessages').updateOne(
         { _id: message._id },
         {
           $set: {
             lastError: String(error.message || error).slice(0, 500),
             lockedAt: null,
             nextSendAt: new Date(now.getTime() + 5 * 60 * 1000),
+            updatedAt: new Date(),
           },
         },
       );

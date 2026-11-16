@@ -12,7 +12,7 @@ import { PAY, today, fmtDate, inr } from '../utils';
 import CalendarInput from '../components/CalendarInput';
 import PasswordInput from '../components/PasswordInput';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
-
+import Icon from '../theme/Icon';
 const junkFoodPattern = /\b(burger|pizza|fries|chips|soda|soft drink|cola|fast food|junk food|fried chicken|nuggets|hot dog|donut|doughnut|pastry|candy|chocolate|ice cream|cookies|biscuits|instant noodles|french fries|milkshake)\b/i;
 const flexibleCategoryPattern = /food|dining|restaurant|snack|shopping|entertain|subscription|coffee|cafe|takeout|delivery|personal|hobby/i;
 
@@ -47,10 +47,28 @@ export default function Expenses() {
   const budgetMonthNumber = Number(budgetMonth.slice(5, 7));
   const { data: budgets } = useSelector((s) => s.budgets);
   const { data: expenseInsights } = useSelector((s) => s.expenseInsights);
+  const refreshBudgetData = () => {
+    dispatch(fetchBudgets({ year: budgetYear }));
+    dispatch(fetchExpenseInsights({ month: budgetMonthNumber, year: budgetYear }));
+  };
   useEffect(() => {
     dispatch(fetchBudgets({ year: budgetYear }));
     dispatch(fetchExpenseInsights({ month: budgetMonthNumber, year: budgetYear }));
   }, [budgetYear, budgetMonthNumber]);
+  useEffect(() => {
+    // Expenses added from the mobile app or another tab change these totals too.
+    const refreshOnReturn = () => {
+      if (document.visibilityState !== 'visible') return;
+      load();
+      refreshBudgetData();
+    };
+    window.addEventListener('focus', refreshOnReturn);
+    document.addEventListener('visibilitychange', refreshOnReturn);
+    return () => {
+      window.removeEventListener('focus', refreshOnReturn);
+      document.removeEventListener('visibilitychange', refreshOnReturn);
+    };
+  });
   const load = () => {
     const { month, ...filters } = query,
       params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value));
@@ -110,6 +128,7 @@ export default function Expenses() {
       await dispatch(setExpensesLocked({ ids, isLocked: true })).unwrap();
       setSelectedExpenseIds(new Set());
       load();
+      refreshBudgetData();
       const selected = query.month ? new Date(`${query.month}-01T00:00:00`) : new Date();
       dispatch(fetchSummary({ month: selected.getMonth() + 1, year: selected.getFullYear() }));
     } catch (error) { setKeyError(String(error)); }
@@ -155,13 +174,14 @@ export default function Expenses() {
     if (!ids.length) return;
     setDeleteConfirmation({
       title: `Delete ${ids.length} selected expense${ids.length === 1 ? '' : 's'}?`,
-      description: 'This will remove the selected expenses from your expense history.',
+      description: 'They will move to Deleted items in the sidebar, where you can restore them or delete them permanently.',
       confirmLabel: 'Delete expenses',
       onConfirm: async () => {
         try {
           await dispatch(removeExpenses(ids)).unwrap();
           setSelectedExpenseIds(new Set());
           load();
+          refreshBudgetData();
           const selected = query.month ? new Date(`${query.month}-01T00:00:00`) : new Date();
           dispatch(fetchSummary({ month: selected.getMonth() + 1, year: selected.getFullYear() }));
         } catch {}
@@ -192,6 +212,7 @@ export default function Expenses() {
       await dispatch(setExpensesLocked({ ids, isLocked: !showLocked })).unwrap();
       setSelectedExpenseIds(new Set());
       load();
+      refreshBudgetData();
       const selected = query.month ? new Date(`${query.month}-01T00:00:00`) : new Date();
       dispatch(fetchSummary({ month: selected.getMonth() + 1, year: selected.getFullYear() }));
     } catch {}
@@ -279,10 +300,10 @@ export default function Expenses() {
             data-tooltip={showLocked ? 'Lock hidden expenses and return to active expenses' : 'Unlock and show hidden expenses'}
             onClick={openHiddenExpenses}
           >
-            <i className={`bi ${showLocked ? 'bi-unlock-fill' : 'bi-lock-fill'}`} aria-hidden="true" />
+            <Icon name={showLocked ? 'unlock' : 'lock'} />
           </button>
           <button className="btn btn-primary add-button" onClick={() => setModal({})}>
-            <i className="bi bi-plus-lg" /> Add expense
+            <Icon name="add" /> Add expense
           </button>
         </div>
       </div>
@@ -324,7 +345,7 @@ export default function Expenses() {
       {showBudgetInsight && (
         <section className={`budget-insight-panel${projectedSpending > budgetLimit ? ' is-warning' : ''}`}>
           <div className="budget-insight-heading">
-            <span className="budget-insight-icon"><i className="bi bi-lightbulb" /></span>
+            <span className="budget-insight-icon"><Icon name="idea" /></span>
             <div>
               <span className="eyebrow">AUTOMATIC SPENDING SUGGESTIONS</span>
               <h4>{projectedSpending > budgetLimit ? 'Your current pace may exceed your limit' : 'You’re nearing your monthly limit'}</h4>
@@ -345,7 +366,7 @@ export default function Expenses() {
       )}
       <section className="filter-panel">
         <div className="search-wrap">
-          <i className="bi bi-search" />
+          <Icon name="search" />
           <input
             className="form-control"
             placeholder="Search items..."
@@ -382,7 +403,7 @@ export default function Expenses() {
           </label>
           <span className="toolbar-selected-count">{selectedExpenseIds.size} selected</span>
           <button className="btn btn-light toolbar-action" disabled={!selectedExpenseIds.size} onClick={toggleSelectedLocked}>
-            <i className={`bi ${showLocked ? 'bi-unlock' : 'bi-lock'}`} />{' '}
+            <Icon name={showLocked ? 'unlock' : 'lock'} />{' '}
             {showLocked ? 'Unhide selected' : 'Hide selected'}
           </button>
           <button
@@ -390,7 +411,7 @@ export default function Expenses() {
             disabled={!selectedExpenseIds.size}
             onClick={deleteSelectedExpenses}
           >
-            <i className="bi bi-trash3" /> Delete selected
+            <Icon name="delete" /> Delete selected
           </button>
         </>}
       </section>
@@ -401,7 +422,7 @@ export default function Expenses() {
             className="btn btn-light"
             onClick={() => setExpandedDays(allDaysExpanded ? new Set() : new Set(dayKeys))}
           >
-            <i className={`bi ${allDaysExpanded ? 'bi-arrows-collapse' : 'bi-arrows-expand'}`} />{' '}
+            <Icon name={allDaysExpanded ? 'collapseAll' : 'expandAll'} />{' '}
             {allDaysExpanded ? 'Collapse all' : 'Expand all'}
           </button>
         </div>
@@ -413,7 +434,7 @@ export default function Expenses() {
       ) : !Object.keys(groups).length ? (
         <div className="panel no-expenses">
           <span className="empty-icon">
-            <i className="bi bi-receipt" />
+            <Icon name="expenses" />
           </span>
           <h4>{showLocked ? 'No hidden expenses' : 'No expenses found'}</h4>
           <p className="muted">
@@ -454,7 +475,7 @@ export default function Expenses() {
                   <small>DAY TOTAL</small>
                   <b>{inr(items.reduce((sum, expense) => sum + expense.amount, 0))}</b>
                 </div>
-                <i className={`bi ${expandedDays.has(day) ? 'bi-chevron-up' : 'bi-chevron-down'} day-chevron`} aria-hidden="true" />
+                <Icon name={expandedDays.has(day) ? 'chevronUp' : 'chevronDown'} className="day-chevron" />
               </button>
               {expandedDays.has(day) && <div className="day-list" id={`expenses-${day}`}>
                 {items.map((expense) => (
@@ -475,7 +496,7 @@ export default function Expenses() {
                         }
                       />
                       <span className="expense-icon">
-                        <i className="bi bi-bag" />
+                        <Icon name="shopping" />
                       </span>
                       <div className="expense-info">
                         <b>{expense.item || expense.description}</b>
@@ -497,14 +518,14 @@ export default function Expenses() {
                           aria-label="Edit expense"
                           onClick={() => setModal(expense)}
                         >
-                          <i className="bi bi-pencil" />
+                          <Icon name="edit" />
                         </button>
                         <button
                           className="icon-button danger"
                           aria-label="Delete expense"
                           onClick={() => setDeleteConfirmation({
                             title: 'Delete this expense?',
-                            description: 'This will remove it from your expense history.',
+                            description: 'It will move to Deleted items in the sidebar, where you can restore it or delete it permanently.',
                             confirmLabel: 'Delete expense',
                             onConfirm: () =>
                               dispatch(removeExpense(expense._id))
@@ -517,11 +538,12 @@ export default function Expenses() {
                                     return next;
                                   });
                                   load();
+                                  refreshBudgetData();
                                 })
                                 .catch(() => setDeleteConfirmation(null)),
                           })}
                         >
-                          <i className="bi bi-trash3" />
+                          <Icon name="delete" />
                         </button>
                       </div>
                     </div>
@@ -546,10 +568,7 @@ export default function Expenses() {
                               : 'View breakdown'}
                           </span>
                           <span className="subtype-count">{expense.subtypes.length} parts</span>
-                          <i
-                            className={`bi ${expandedSubtypeIds.has(expense._id) ? 'bi-dash-lg' : 'bi-plus-lg'}`}
-                            aria-hidden="true"
-                          />
+                          <Icon name={expandedSubtypeIds.has(expense._id) ? 'minus' : 'add'} />
                         </button>
                         {expandedSubtypeIds.has(expense._id) && (
                           <div className="expense-subtypes">
@@ -578,6 +597,7 @@ export default function Expenses() {
           onClose={() => setModal(null)}
           onSaved={() => {
             load();
+            refreshBudgetData();
             const selected = query.month ? new Date(`${query.month}-01T00:00:00`) : new Date();
             dispatch(
               fetchSummary({ month: selected.getMonth() + 1, year: selected.getFullYear() }),

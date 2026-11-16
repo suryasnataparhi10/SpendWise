@@ -1,1 +1,23 @@
-<!doctype html><html lang="en" data-color-theme="midnight-mint"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>SpendWise</title></head><body><div id="root"></div><script type="module" src="/src/main.jsx"></script></body></html>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>SpendWise</title>
+    <script>
+      // Paint the last applied theme before the app boots so pages never flash another theme.
+      try {
+        var boot = JSON.parse(localStorage.getItem('themeBoot') || 'null');
+        if (boot) {
+          var root = document.documentElement;
+          for (var name in boot.vars) root.style.setProperty(name, boot.vars[name]);
+          for (var attr in boot.attrs) root.setAttribute(attr, boot.attrs[attr]);
+        }
+      } catch (error) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

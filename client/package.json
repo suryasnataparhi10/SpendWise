@@ -10,17 +10,31 @@
     "format:check": "prettier --check \"src/**/*.{js,jsx,css}\" \"../server/**/*.js\" \"vite.config.js\" package.json ../server/package.json ../README.md ../.prettierrc.json"
   },
   "dependencies": {
+    "@fontsource-variable/dm-sans": "5.2.8",
+    "@fontsource-variable/fraunces": "5.2.8",
+    "@fontsource-variable/inter": "5.2.8",
+    "@fontsource-variable/jetbrains-mono": "5.2.8",
+    "@fontsource-variable/manrope": "5.2.8",
+    "@fontsource-variable/nunito": "5.2.7",
+    "@fontsource-variable/outfit": "5.2.8",
+    "@fontsource-variable/plus-jakarta-sans": "5.2.8",
+    "@fontsource-variable/roboto": "5.2.8",
+    "@fontsource/poppins": "5.2.7",
+    "@phosphor-icons/react": "2.1.10",
     "@popperjs/core": "^2.11.8",
     "@reduxjs/toolkit": "^2.2.6",
     "axios": "^1.7.2",
     "bootstrap": "^5.3.3",
     "bootstrap-icons": "^1.11.3",
     "chart.js": "^4.4.3",
+    "lucide-react": "1.57.0",
     "react": "^18.3.1",
     "react-chartjs-2": "^5.3.1",
     "react-dom": "^18.3.1",
     "react-redux": "^9.1.2",
-    "react-router-dom": "^6.24.0"
+    "react-router-dom": "^6.24.0",
+    "simple-icons": "^16.36.0",
+    "spendwise": "file:.."
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",

@@ -1,81 +1,126 @@
-import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { Navigate, NavLink, Link, Outlet, useNavigate } from 'react-router-dom';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
+import { Navigate, NavLink, Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { loadMe, logout, toggleTheme, clearMsg, updateProfile, setColorTheme, setCustomAccent } from '../state/store';
+import { loadMe, logout, clearMsg, updateProfile } from '../state/store';
+import Icon from '../theme/Icon';
+import { useTheme } from '../theme/ThemeProvider';
+import ThemePreviewBar from '../components/ThemePreviewBar';
+import { APPEARANCE_OPTIONS } from '../theme/themes';
+import { migrationApi } from '../services/migrationApi';
 
+// The theme studio is only downloaded the first time someone opens it.
+const ThemeGallery = lazy(() => import('../components/ThemeGallery'));
+
+const NEXT_APPEARANCE = { dark: 'light', light: 'system', system: 'dark' };
 const initials = (name, email) => (name || email || 'U').trim().charAt(0).toUpperCase();
-const THEME_ICONS = {
-  'midnight-mint': 'flower3',
-  'ocean-blue': 'water',
-  'warm-ledger': 'journal-bookmark-fill',
-  'lavender-graphite': 'stars',
-  'sunset-coral': 'sunset-fill',
-  monochrome: 'circle-half',
-  'sage-sand': 'leaf-fill',
-  'berry-night': 'flower1',
-  'arctic-frost': 'snow2',
-  rosewood: 'flower2',
-  'citrus-grove': 'lemon',
-  'royal-indigo': 'gem',
-  'aurora-glow': 'stars',
-  sakura: 'flower1',
-  'midnight-orchid': 'moon-stars-fill',
-  'coastal-sand': 'water',
-  custom: 'palette-fill',
-};
-const THEME_OPTIONS = [
-  { id: 'midnight-mint', name: 'Midnight Mint', colors: ['#79e0c2', '#151f30', '#203c3d'] },
-  { id: 'ocean-blue', name: 'Ocean Blue', colors: ['#3484a6', '#fbfeff', '#dceef4'] },
-  { id: 'warm-ledger', name: 'Warm Ledger', colors: ['#9a7040', '#fffdf8', '#eee2cb'] },
-  { id: 'lavender-graphite', name: 'Lavender Graphite', colors: ['#7867b2', '#fcfbff', '#e5e0f3'] },
-  { id: 'sunset-coral', name: 'Sunset Coral', colors: ['#d46f5c', '#fffaf7', '#f8e1d9'] },
-  { id: 'monochrome', name: 'Monochrome', colors: ['#525252', '#ffffff', '#e9e9e9'] },
-  { id: 'sage-sand', name: 'Sage & Sand', colors: ['#71866b', '#fffdf7', '#e8eadc'] },
-  { id: 'berry-night', name: 'Berry Night', colors: ['#a34e83', '#fffaff', '#f0e1ed'] },
-  { id: 'arctic-frost', name: 'Arctic Frost', colors: ['#527fa8', '#fbfdff', '#dce9f5'] },
-  { id: 'rosewood', name: 'Rosewood', colors: ['#a65970', '#fffafd', '#f2e0e7'] },
-  { id: 'citrus-grove', name: 'Citrus Grove', colors: ['#728a3c', '#fffef8', '#e8edcf'] },
-  { id: 'royal-indigo', name: 'Royal Indigo', colors: ['#5d5fb0', '#fcfcff', '#e1e2f7'] },
-  { id: 'aurora-glow', name: 'Aurora Glow', colors: ['#3c9d96', '#f7fbfa', '#dff3ef'] },
-  { id: 'sakura', name: 'Sakura', colors: ['#c7668a', '#fff9fb', '#f8e4eb'] },
-  { id: 'midnight-orchid', name: 'Midnight Orchid', colors: ['#a88be0', '#201b2d', '#3c3150'] },
-  { id: 'coastal-sand', name: 'Coastal Sand', colors: ['#4c9290', '#fffdf6', '#eee8d8'] },
-  { id: 'custom', name: 'Custom', colors: ['#7c6ee8', '#ffffff', '#eeeaff'] },
+const NAV_SECTIONS = [
+  {
+    caption: 'YOUR SPACE',
+    links: [
+      { to: '/dashboard', icon: 'dashboard', label: 'Overview' },
+      { to: '/expenses', icon: 'expenses', label: 'Expenses' },
+      { to: '/income', icon: 'income', label: 'Income' },
+      { to: '/transactions', icon: 'transactions', label: 'Transactions' },
+      { to: '/password-vault', icon: 'vault', label: 'Password vault' },
+    ],
+  },
+  {
+    caption: 'PLAN AHEAD',
+    links: [
+      { to: '/budgets', icon: 'budgets', label: 'Budgets' },
+      { to: '/reminders', icon: 'reminders', label: 'Reminders' },
+      { to: '/messages', icon: 'messages', label: 'Scheduled messages' },
+      { to: '/reports', icon: 'reports', label: 'Reports' },
+      { to: '/deleted', icon: 'delete', label: 'Deleted items' },
+    ],
+  },
 ];
 
-const prepareProfilePhoto = (file) => new Promise((resolve, reject) => {
-  if (!file?.type?.startsWith('image/')) return reject(new Error('Choose an image file.'));
-  if (file.size > 12 * 1024 * 1024) return reject(new Error('Choose an image smaller than 12 MB.'));
-  const url = URL.createObjectURL(file);
-  const image = new Image();
-  image.onload = () => {
-    const size = 420;
-    const side = Math.min(image.naturalWidth, image.naturalHeight);
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    canvas.getContext('2d').drawImage(image, (image.naturalWidth - side) / 2, (image.naturalHeight - side) / 2, side, side, 0, 0, size, size);
-    URL.revokeObjectURL(url);
-    resolve(canvas.toDataURL('image/jpeg', 0.78));
-  };
-  image.onerror = () => {
-    URL.revokeObjectURL(url);
-    reject(new Error('That image could not be opened.'));
-  };
-  image.src = url;
-});
+const ADMIN_SECTION = {
+  caption: 'ADMINISTRATION',
+  links: [{ to: '/admin/migration', icon: 'database', label: 'Migration center' }],
+};
+
+const MAX_PROFILE_PHOTO_BYTES = 400 * 1024;
+const prepareProfilePhoto = (file) =>
+  new Promise((resolve, reject) => {
+    const fileType = file?.type?.toLowerCase();
+    const fileExtension = file?.name?.split('.').pop()?.toLowerCase();
+    const supportedExtensions = ['jpg', 'jpeg', 'png', 'webp'];
+    if (
+      !['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(fileType) &&
+      !supportedExtensions.includes(fileExtension)
+    ) {
+      reject(new Error('Choose a JPG, PNG, or WebP image.'));
+      return;
+    }
+    if (file.size > 12 * 1024 * 1024) {
+      reject(new Error('Choose an image smaller than 12 MB.'));
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = async () => {
+      URL.revokeObjectURL(url);
+      const side = Math.min(image.naturalWidth, image.naturalHeight);
+      const reader = new FileReader();
+      const encode = (size, quality) =>
+        new Promise((resolveBlob) => {
+          const canvas = document.createElement('canvas');
+          canvas.width = size;
+          canvas.height = size;
+          const context = canvas.getContext('2d');
+          if (!context) {
+            resolveBlob(null);
+            return;
+          }
+          context.drawImage(
+            image,
+            (image.naturalWidth - side) / 2,
+            (image.naturalHeight - side) / 2,
+            side,
+            side,
+            0,
+            0,
+            size,
+            size,
+          );
+          canvas.toBlob(resolveBlob, 'image/jpeg', quality);
+        });
+      try {
+        for (const size of [420, 360, 300]) {
+          for (const quality of [0.76, 0.62, 0.5]) {
+            const blob = await encode(size, quality);
+            if (!blob) throw new Error('This image could not be processed.');
+            if (blob.size > MAX_PROFILE_PHOTO_BYTES) continue;
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => reject(new Error('This image could not be read.'));
+            reader.readAsDataURL(blob);
+            return;
+          }
+        }
+        reject(
+          new Error(
+            'Choose a simpler or smaller photo; profile pictures must be under 400 KB after processing.',
+          ),
+        );
+      } catch (error) {
+        reject(error);
+      }
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('That image could not be opened.'));
+    };
+    image.src = url;
+  });
 export default function Layout() {
   const d = useDispatch(),
     { user, token } = useSelector((s) => s.auth),
-    theme = useSelector((s) => s.theme),
-    colorTheme = useSelector((s) => s.colorTheme),
-    customAccent = useSelector((s) => s.customAccent),
     msg = useSelector((s) => s.ui.msg),
+    { theme, appearance, appearancePreference, save, isPreviewing } = useTheme(),
     [open, setOpen] = useState(false),
-    [themePickerOpen, setThemePickerOpen] = useState(false),
-    [customizingTheme, setCustomizingTheme] = useState(false),
-    [customAccentDraft, setCustomAccentDraft] = useState(customAccent),
+    [galleryOpen, setGalleryOpen] = useState(false),
     [globalSearch, setGlobalSearch] = useState(''),
     [profileOpen, setProfileOpen] = useState(false),
     [profileName, setProfileName] = useState(''),
@@ -83,17 +128,26 @@ export default function Layout() {
     [profileError, setProfileError] = useState(''),
     [profileSaved, setProfileSaved] = useState(false),
     [profileSaving, setProfileSaving] = useState(false),
+    [profilePhotoProcessing, setProfilePhotoProcessing] = useState(false),
     photoInput = useRef(null),
+    location = useLocation(),
     navigate = useNavigate();
-  const themeOptions = THEME_OPTIONS.map((option) => option.id === 'custom'
-    ? { ...option, colors: [customAccent, '#ffffff', `${customAccent}22`] }
-    : option);
-  const currentTheme = themeOptions.find((option) => option.id === colorTheme);
-  useEffect(() => {
-    document.documentElement.dataset.bsTheme = theme;
-  }, [theme]);
+  const [isAdmin, setIsAdmin] = useState(false);
   useEffect(() => {
     if (token) d(loadMe());
+  }, [token]);
+  // The administration section is shown only to accounts the server confirms as administrators.
+  useEffect(() => {
+    setIsAdmin(false);
+    if (!token) return undefined;
+    let current = true;
+    migrationApi
+      .access()
+      .then((result) => current && setIsAdmin(Boolean(result?.isAdmin)))
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
   }, [token]);
   useEffect(() => {
     if (msg) {
@@ -102,6 +156,9 @@ export default function Layout() {
     }
   }, [msg]);
   if (!token) return <Navigate to="/login" />;
+  const currentAppearance =
+    APPEARANCE_OPTIONS.find((option) => option.mode === appearancePreference) ||
+    APPEARANCE_OPTIONS[1];
   const submitSearch = (event) => {
     event.preventDefault();
     const term = globalSearch.trim();
@@ -121,10 +178,13 @@ export default function Layout() {
     if (!file) return;
     setProfileError('');
     setProfileSaved(false);
+    setProfilePhotoProcessing(true);
     try {
       setProfileAvatar(await prepareProfilePhoto(file));
     } catch (error) {
       setProfileError(error.message || 'Unable to use that image.');
+    } finally {
+      setProfilePhotoProcessing(false);
     }
   };
   const saveProfile = async (event) => {
@@ -147,48 +207,36 @@ export default function Layout() {
         <span className="ambient-orb ambient-orb-two" />
         <span className="ambient-orb ambient-orb-three" />
       </div>
-      <aside className={'side' + (open ? ' open' : '')}>
+      <aside className={'side' + (open ? ' open' : '')} aria-label="Main navigation">
         <Link className="brand" to="/dashboard">
           <span className="brand-mark">
-            <i className="bi bi-wallet2" />
+            <Icon name="wallet" />
           </span>
-          pocketwise
+          <span className="brand-text">pocketwise</span>
         </Link>
-        <div className="nav-caption">YOUR SPACE</div>
-        <NavLink to="/dashboard" onClick={() => setOpen(false)}>
-          <i className="bi bi-grid-1x2" />
-          Overview
-        </NavLink>
-        <NavLink to="/expenses" onClick={() => setOpen(false)}>
-          <i className="bi bi-receipt" />
-          Expenses
-        </NavLink>
-        <NavLink to="/income" onClick={() => setOpen(false)}>
-          <i className="bi bi-cash-stack" />
-          Income
-        </NavLink>
-        <div className="nav-caption nav-caption-spaced">PLAN AHEAD</div>
-        <NavLink to="/budgets" onClick={() => setOpen(false)}>
-          <i className="bi bi-speedometer2" />
-          Budgets
-        </NavLink>
-        <NavLink to="/reminders" onClick={() => setOpen(false)}>
-          <i className="bi bi-calendar2-check" />
-          Reminders
-        </NavLink>
-        <NavLink to="/messages" onClick={() => setOpen(false)}>
-          <span className="scheduled-nav-icon" aria-hidden="true">
-            <i className="bi bi-send-fill" />
-            <i className="bi bi-clock-fill" />
-          </span>
-          Scheduled messages
-        </NavLink>
-        <NavLink to="/reports" onClick={() => setOpen(false)}>
-          <i className="bi bi-graph-up-arrow" />
-          Reports
-        </NavLink>
+        <nav className="side-nav">
+          {(isAdmin ? [...NAV_SECTIONS, ADMIN_SECTION] : NAV_SECTIONS).map((section, index) => [
+            <div
+              key={section.caption}
+              className={'nav-caption' + (index ? ' nav-caption-spaced' : '')}
+            >
+              {section.caption}
+            </div>,
+            ...section.links.map((link) => (
+              <NavLink key={link.to} to={link.to} onClick={() => setOpen(false)} title={link.label}>
+                <Icon name={link.icon} />
+                <span className="nav-label">{link.label}</span>
+              </NavLink>
+            )),
+          ])}
+        </nav>
         <div className="side-bottom">
-          <button className="side-profile" type="button" onClick={showProfile} aria-label="Open your profile">
+          <button
+            className="side-profile"
+            type="button"
+            onClick={showProfile}
+            aria-label="Open your profile"
+          >
             <span className="avatar">
               {user?.avatar ? <img src={user.avatar} alt="" /> : initials(user?.name, user?.email)}
             </span>
@@ -196,26 +244,39 @@ export default function Layout() {
               <b>{user?.name || 'Your account'}</b>
               <small>{user?.email}</small>
             </div>
-            <i className="bi bi-chevron-right profile-chevron" aria-hidden="true" />
+            <Icon name="chevronRight" className="profile-chevron" />
           </button>
-          <button className="side-action" onClick={() => d(toggleTheme())}>
-            <i className={'bi bi-' + (theme === 'dark' ? 'sun' : 'moon-stars')} />
-            {theme === 'dark' ? 'Light appearance' : 'Dark appearance'}
+          <button
+            className="side-action"
+            onClick={() => save({ appearance: NEXT_APPEARANCE[appearancePreference] })}
+            disabled={isPreviewing}
+            title="Switch between dark, light and your device setting"
+          >
+            <Icon name={currentAppearance.icon} />
+            <span className="nav-label">
+              Appearance: {currentAppearance.label}
+              {appearancePreference === 'system' ? ` (${appearance})` : ''}
+            </span>
           </button>
           <button className="side-action logout" onClick={() => d(logout())}>
-            <i className="bi bi-box-arrow-left" />
-            Sign out
+            <Icon name="logout" />
+            <span className="nav-label">Sign out</span>
           </button>
         </div>
       </aside>
       <div className="main">
         <header className="topbar">
-          <button className="mobile-menu" onClick={() => setOpen(!open)}>
-            <i className="bi bi-list" />
+          <button
+            className="mobile-menu"
+            onClick={() => setOpen(!open)}
+            aria-label="Open navigation"
+            aria-expanded={open}
+          >
+            <Icon name="menu" />
           </button>
           <div className="topbar-label">PERSONAL FINANCE</div>
           <form className="global-search" onSubmit={submitSearch} role="search">
-            <i className="bi bi-search" aria-hidden="true" />
+            <Icon name="search" />
             <input
               aria-label="Search all expenses"
               placeholder="Search all expenses..."
@@ -224,11 +285,20 @@ export default function Layout() {
             />
             <button type="submit">Search</button>
           </form>
-          <button className="topbar-theme-picker" type="button" onClick={() => setThemePickerOpen(true)} aria-haspopup="dialog" aria-expanded={themePickerOpen} aria-label="Choose color theme">
-            <span className="theme-current-swatch" style={{ '--theme-swatch': currentTheme?.colors[0] || 'var(--primary)' }} />
-            <i className={`bi bi-${THEME_ICONS[colorTheme] || 'palette2'} theme-choice-icon`} aria-hidden="true" />
-            <span className="theme-current-name">{currentTheme?.name || 'Color theme'}</span>
-            <i className="bi bi-chevron-down theme-picker-chevron" aria-hidden="true" />
+          <button
+            className="topbar-theme-picker"
+            type="button"
+            onClick={() => setGalleryOpen(true)}
+            aria-haspopup="dialog"
+            aria-expanded={galleryOpen}
+            aria-label={`Theme: ${theme.name}. Open theme studio`}
+          >
+            <span className="theme-current-swatch">
+              <Icon name="palette" />
+            </span>
+            <span className="theme-current-name">{theme.name}</span>
+            <small>{theme.designName}</small>
+            <Icon name="chevronDown" />
           </button>
           <div className="topbar-date">
             {new Date().toLocaleDateString('en-IN', {
@@ -238,129 +308,189 @@ export default function Layout() {
               year: 'numeric',
             })}
           </div>
-          <button className="topbar-profile" type="button" onClick={showProfile} aria-label="Open your profile">
+          <button
+            className="topbar-profile"
+            type="button"
+            onClick={showProfile}
+            aria-label="Open your profile"
+          >
             {user?.avatar ? <img src={user.avatar} alt="" /> : initials(user?.name, user?.email)}
           </button>
         </header>
-        <main className="page-content">
-          <Outlet />
+        <main className="page-content page-enter" key={location.pathname}>
+          <Suspense
+            fallback={
+              <div className="text-center py-5" role="status" aria-label="Loading page">
+                <div className="spinner-border" />
+              </div>
+            }
+          >
+            <Outlet />
+          </Suspense>
         </main>
       </div>
-      {themePickerOpen && createPortal(
-        <div className="theme-picker-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) { setThemePickerOpen(false); setCustomizingTheme(false); } }}>
-          <section className="theme-picker-modal" role="dialog" aria-modal="true" aria-labelledby="theme-picker-title">
-            <header className="theme-picker-heading">
-              <div>
-                <span className="eyebrow">MAKE IT YOURS</span>
-                <h2 id="theme-picker-title">{customizingTheme ? 'Create your own theme' : 'Choose your color theme'}</h2>
-                <p className="muted">{customizingTheme ? 'Pick an accent and we’ll adapt it for light and dark appearance.' : 'Each palette works with both light and dark appearance.'}</p>
-              </div>
-              {customizingTheme && <button type="button" className="theme-picker-back" onClick={() => setCustomizingTheme(false)}><i className="bi bi-arrow-left" /> Themes</button>}
-              <button type="button" className="theme-picker-close" onClick={() => { setThemePickerOpen(false); setCustomizingTheme(false); }} aria-label="Close theme chooser"><i className="bi bi-x-lg" /></button>
-            </header>
-            {customizingTheme ? (
-              <div className="custom-theme-editor">
-                <div className="custom-theme-preview" style={{ '--custom-preview-accent': customAccentDraft }}>
-                  <span className="custom-preview-circle" />
-                  <div className="custom-preview-card">
-                    <small>MONTHLY BALANCE</small>
-                    <b>₹24,850</b>
-                    <span><i /> On track</span>
-                  </div>
-                  <button type="button" className="custom-preview-action">Add expense</button>
-                </div>
-                <div className="custom-theme-controls">
-                  <label className="custom-accent-control" htmlFor="custom-accent-color">
-                    <span><b>Accent color</b><small>Used for buttons, charts, and highlights</small></span>
-                    <input id="custom-accent-color" type="color" value={customAccentDraft} onChange={(event) => setCustomAccentDraft(event.target.value)} />
-                  </label>
-                  <div className="custom-color-presets" aria-label="Suggested accent colors">
-                    {['#7c6ee8', '#287f8e', '#43855c', '#d46f5c', '#c34e83', '#bd8b35', '#3d69bc', '#45454a'].map((color) => (
-                      <button key={color} type="button" className={customAccentDraft.toLowerCase() === color ? 'active' : ''} style={{ backgroundColor: color }} onClick={() => setCustomAccentDraft(color)} aria-label={`Choose ${color}`} />
-                    ))}
-                  </div>
-                  <p className="muted custom-theme-note"><i className="bi bi-sun" /> Light and dark colors are adjusted automatically to keep the interface readable.</p>
-                  <button type="button" className="btn btn-primary custom-theme-apply" onClick={() => { d(setCustomAccent(customAccentDraft)); d(setColorTheme('custom')); setThemePickerOpen(false); setCustomizingTheme(false); }}>Use this custom theme</button>
-                </div>
-              </div>
-            ) : (
-              <div className="theme-options-grid">
-                {themeOptions.map((option) => (
-                  <button key={option.id} type="button" className={`theme-option-card${colorTheme === option.id ? ' selected' : ''}`} onClick={() => {
-                    if (option.id === 'custom') {
-                      setCustomAccentDraft(customAccent);
-                      setCustomizingTheme(true);
-                    } else {
-                      d(setColorTheme(option.id));
-                      setThemePickerOpen(false);
-                    }
-                  }} aria-pressed={colorTheme === option.id}>
-                    <span className="theme-option-preview" style={{ '--preview-accent': option.colors[0], '--preview-surface': option.colors[1], '--preview-soft': option.colors[2] }}>
-                      <span className="theme-option-circle" />
-                      <span className="theme-option-mini"><i className={`bi bi-${THEME_ICONS[option.id] || 'palette2'}`} /><b /><b /></span>
-                    </span>
-                    <span className="theme-option-name">{option.name}</span>
-                    <span className="theme-option-colors" aria-label="Theme color samples">
-                      {option.colors.map((color) => <i key={color} style={{ backgroundColor: color }} />)}
-                    </span>
-                    {colorTheme === option.id && <span className="theme-option-check"><i className="bi bi-check2" /></span>}
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
-        </div>,
-        document.body,
+      {galleryOpen && (
+        <Suspense fallback={null}>
+          <ThemeGallery open onClose={() => setGalleryOpen(false)} />
+        </Suspense>
       )}
+      <ThemePreviewBar onBrowse={() => setGalleryOpen(true)} />
       {profileOpen && (
         <div className="modal d-block modal-backdrop-custom profile-backdrop">
-          <span className="profile-decoration profile-decoration-bubble bubble-one" aria-hidden="true" />
-          <span className="profile-decoration profile-decoration-bubble bubble-two" aria-hidden="true" />
-          <span className="profile-decoration profile-decoration-bubble bubble-three" aria-hidden="true" />
-          <span className="profile-decoration profile-decoration-bubble bubble-four" aria-hidden="true" />
-          <span className="profile-decoration profile-decoration-butterfly butterfly-one" aria-hidden="true">🦋</span>
-          <span className="profile-decoration profile-decoration-butterfly butterfly-two" aria-hidden="true">🦋</span>
-          <span className="profile-decoration profile-decoration-flower flower-one" aria-hidden="true">🌸</span>
-          <span className="profile-decoration profile-decoration-flower flower-two" aria-hidden="true">🌼</span>
-          <span className="profile-decoration profile-decoration-sparkle sparkle-one" aria-hidden="true">✦</span>
-          <span className="profile-decoration profile-decoration-sparkle sparkle-two" aria-hidden="true">✧</span>
-          <div className="modal-dialog modal-dialog-centered profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-title">
+          <span
+            className="profile-decoration profile-decoration-bubble bubble-one"
+            aria-hidden="true"
+          />
+          <span
+            className="profile-decoration profile-decoration-bubble bubble-two"
+            aria-hidden="true"
+          />
+          <span
+            className="profile-decoration profile-decoration-bubble bubble-three"
+            aria-hidden="true"
+          />
+          <span
+            className="profile-decoration profile-decoration-bubble bubble-four"
+            aria-hidden="true"
+          />
+          <Icon
+            name="sparkle"
+            className="profile-decoration profile-decoration-butterfly butterfly-one"
+          />
+          <Icon
+            name="star"
+            className="profile-decoration profile-decoration-butterfly butterfly-two"
+          />
+          <Icon name="flower" className="profile-decoration profile-decoration-flower flower-one" />
+          <Icon name="flower" className="profile-decoration profile-decoration-flower flower-two" />
+          <Icon
+            name="sparkle"
+            className="profile-decoration profile-decoration-sparkle sparkle-one"
+          />
+          <Icon name="star" className="profile-decoration profile-decoration-sparkle sparkle-two" />
+          <div
+            className="modal-dialog modal-dialog-centered profile-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="profile-title"
+          >
             <section className="modal-content profile-modal">
               <div className="profile-cover">
-                <button type="button" className="profile-close" onClick={() => setProfileOpen(false)} aria-label="Close profile">
-                  <i className="bi bi-x-lg" />
+                <button
+                  type="button"
+                  className="profile-close"
+                  onClick={() => setProfileOpen(false)}
+                  aria-label="Close profile"
+                >
+                  <Icon name="close" />
                 </button>
                 <span className="profile-cover-orb profile-cover-orb-one" />
                 <span className="profile-cover-orb profile-cover-orb-two" />
                 <div className="profile-portrait-wrap">
                   <div className="profile-portrait">
-                    {profileAvatar ? <img src={profileAvatar} alt="Profile preview" /> : initials(profileName, user?.email)}
+                    {profileAvatar ? (
+                      <img src={profileAvatar} alt="Profile preview" />
+                    ) : (
+                      initials(profileName, user?.email)
+                    )}
                   </div>
-                  <button className="profile-photo-edit" type="button" onClick={() => photoInput.current?.click()} aria-label="Choose profile photo">
-                    <i className="bi bi-camera-fill" />
+                  <button
+                    className="profile-photo-edit"
+                    type="button"
+                    onClick={() => photoInput.current?.click()}
+                    disabled={profilePhotoProcessing || profileSaving}
+                    aria-label="Choose profile photo"
+                  >
+                    {profilePhotoProcessing ? (
+                      <span className="spinner-border spinner-border-sm" />
+                    ) : (
+                      <Icon name="camera" />
+                    )}
                   </button>
                 </div>
-                <input ref={photoInput} className="visually-hidden" type="file" accept="image/*" onChange={chooseProfilePhoto} />
+                <input
+                  ref={photoInput}
+                  className="visually-hidden"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={chooseProfilePhoto}
+                />
               </div>
               <form onSubmit={saveProfile}>
                 <div className="profile-modal-body">
                   <span className="eyebrow">YOUR ACCOUNT</span>
                   <h2 id="profile-title">Your Little Corner</h2>
                   <p className="muted">Update your photo and how your name appears in SpendWise.</p>
-                  <label className="form-label" htmlFor="profile-name">Display name</label>
-                  <input id="profile-name" className="form-control" value={profileName} onChange={(event) => { setProfileName(event.target.value); setProfileSaved(false); }} maxLength={60} placeholder="Your name" required />
+                  <label className="form-label" htmlFor="profile-name">
+                    Display name
+                  </label>
+                  <input
+                    id="profile-name"
+                    className="form-control"
+                    value={profileName}
+                    onChange={(event) => {
+                      setProfileName(event.target.value);
+                      setProfileSaved(false);
+                    }}
+                    maxLength={60}
+                    placeholder="Your name"
+                    required
+                  />
                   <div className="profile-email-row">
-                    <span className="profile-email-icon"><i className="bi bi-envelope" /></span>
-                    <span><small>Email address</small><b>{user?.email}</b></span>
-                    <span className="profile-verified"><i className="bi bi-shield-check" /> Account</span>
+                    <span className="profile-email-icon">
+                      <Icon name="mail" />
+                    </span>
+                    <span>
+                      <small>Email address</small>
+                      <b>{user?.email}</b>
+                    </span>
+                    <span className="profile-verified">
+                      <Icon name="shieldCheck" /> Account
+                    </span>
                   </div>
-                  {profileError && <div className="profile-feedback profile-feedback-error" role="alert">{profileError}</div>}
-                  {profileSaved && <div className="profile-feedback profile-feedback-success" role="status"><i className="bi bi-check-circle-fill" /> Your profile is saved.</div>}
+                  {profileError && (
+                    <div className="profile-feedback profile-feedback-error" role="alert">
+                      {profileError}
+                    </div>
+                  )}
+                  {profilePhotoProcessing && (
+                    <div className="profile-feedback" role="status">
+                      Preparing your photo…
+                    </div>
+                  )}
+                  {profileSaved && (
+                    <div className="profile-feedback profile-feedback-success" role="status">
+                      <Icon name="success" /> Your profile is saved.
+                    </div>
+                  )}
                 </div>
                 <div className="profile-modal-footer">
-                  {profileAvatar && <button type="button" className="btn btn-light profile-remove-photo" onClick={() => { setProfileAvatar(''); setProfileSaved(false); }}>Remove photo</button>}
-                  <button type="button" className="btn btn-light" onClick={() => setProfileOpen(false)}>Close</button>
-                  <button type="submit" className="btn btn-primary" disabled={profileSaving}>{profileSaving ? 'Saving…' : 'Save profile'}</button>
+                  {profileAvatar && (
+                    <button
+                      type="button"
+                      className="btn btn-light profile-remove-photo"
+                      onClick={() => {
+                        setProfileAvatar('');
+                        setProfileSaved(false);
+                      }}
+                    >
+                      Remove photo
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-light"
+                    onClick={() => setProfileOpen(false)}
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={profileSaving || profilePhotoProcessing}
+                  >
+                    {profileSaving ? 'Uploading…' : 'Save profile'}
+                  </button>
                 </div>
               </form>
             </section>
@@ -370,7 +500,11 @@ export default function Layout() {
       {open && (
         <button aria-label="Close menu" className="nav-scrim" onClick={() => setOpen(false)} />
       )}
-      {msg && <div className="toast show position-fixed bottom-0 end-0 m-3 p-3 shadow">{msg}</div>}
+      {msg && (
+        <div className="toast show position-fixed bottom-0 end-0 m-3 p-3" role="status">
+          {msg}
+        </div>
+      )}
     </div>
   );
 }

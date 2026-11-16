@@ -1,11 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { addIncome, fetchIncome, fetchSummary, removeIncome, removeIncomes } from '../state/store';
+import {
+  addIncome,
+  fetchIncome,
+  fetchSummary,
+  removeIncome,
+  removeIncomes,
+  updateIncome,
+} from '../state/store';
 import { inr, today, fmtDate } from '../utils';
 import CalendarInput from '../components/CalendarInput';
 import AmountInput from '../components/AmountInput';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
-
+import Icon from '../theme/Icon';
 const emptyForm = () => ({ source: '', amount: '', date: today() });
 
 export default function Income() {
@@ -16,6 +23,7 @@ export default function Income() {
   const [form, setForm] = useState(emptyForm());
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [editingIncomeId, setEditingIncomeId] = useState(null);
   const [selectedIncomeIds, setSelectedIncomeIds] = useState(() => new Set());
   const [deleteConfirmation, setDeleteConfirmation] = useState(null);
 
@@ -60,8 +68,14 @@ export default function Income() {
     setError('');
     setSaving(true);
     try {
-      await dispatch(addIncome({ ...form, amount: Number(form.amount) })).unwrap();
+      const entry = { ...form, amount: Number(form.amount) };
+      if (editingIncomeId) {
+        await dispatch(updateIncome({ id: editingIncomeId, ...entry })).unwrap();
+      } else {
+        await dispatch(addIncome(entry)).unwrap();
+      }
       setForm(emptyForm());
+      setEditingIncomeId(null);
       load();
     } catch (reason) {
       setError(String(reason));
@@ -79,17 +93,24 @@ export default function Income() {
           <p className="muted">Track pay, freelance income, and other money received.</p>
         </div>
       </div>
-      <section className="income-balance-strip section-feature-panel" aria-label="Monthly available balance after expenses">
+      <section
+        className="income-balance-strip section-feature-panel"
+        aria-label="Monthly available balance after expenses"
+      >
         <div>
           <small>PREVIOUS BALANCE</small>
           <b>{inr(openingBalance)}</b>
         </div>
-        <span className="income-plus" aria-hidden="true">+</span>
+        <span className="income-plus" aria-hidden="true">
+          +
+        </span>
         <div>
           <small>INCOME THIS MONTH</small>
           <b>{inr(total)}</b>
         </div>
-        <span className="income-equals" aria-hidden="true">=</span>
+        <span className="income-equals" aria-hidden="true">
+          =
+        </span>
         <div className="income-available">
           <small>AVAILABLE THIS MONTH</small>
           <b>{inr(availableFunds)}</b>
@@ -108,15 +129,31 @@ export default function Income() {
           <small>REMAINING</small>
           <b>{inr(remaining)}</b>
         </div>
-        <p>Last month's remaining balance carries forward. This month's expenses are deducted from the available total.</p>
+        <p>
+          Last month's remaining balance carries forward. This month's expenses are deducted from
+          the available total.
+        </p>
       </section>
       <div className="finance-columns">
         <section className="panel finance-form-panel section-panel">
           <div className="panel-heading">
             <div>
-              <span className="eyebrow">NEW ENTRY</span>
-              <h4>Add income</h4>
+              <span className="eyebrow">{editingIncomeId ? 'UPDATE ENTRY' : 'NEW ENTRY'}</span>
+              <h4>{editingIncomeId ? 'Edit income' : 'Add income'}</h4>
             </div>
+            {editingIncomeId && (
+              <button
+                type="button"
+                className="btn btn-outline-secondary btn-sm"
+                onClick={() => {
+                  setEditingIncomeId(null);
+                  setForm(emptyForm());
+                  setError('');
+                }}
+              >
+                Cancel
+              </button>
+            )}
           </div>
           <form onSubmit={submit} className="finance-form">
             <label className="form-label">
@@ -153,7 +190,13 @@ export default function Income() {
             </label>
             {error && <div className="alert alert-danger py-2">{error}</div>}
             <button className="btn btn-primary" disabled={saving}>
-              {saving ? 'Saving...' : 'Save income'}
+              {saving
+                ? editingIncomeId
+                  ? 'Updating...'
+                  : 'Saving...'
+                : editingIncomeId
+                  ? 'Update income'
+                  : 'Save income'}
             </button>
           </form>
         </section>
@@ -192,7 +235,7 @@ export default function Income() {
                 disabled={!selectedIncomeIds.size}
                 onClick={deleteSelectedIncome}
               >
-                <i className="bi bi-trash3" /> Delete selected
+                <Icon name="delete" /> Delete selected
               </button>
             </div>
           )}
@@ -219,7 +262,7 @@ export default function Income() {
                     }
                   />
                   <span className="finance-entry-icon income-icon">
-                    <i className="bi bi-arrow-down-left" />
+                    <Icon name="incoming" />
                   </span>
                   <div className="finance-entry-name">
                     <b>{entry.source}</b>
@@ -227,35 +270,53 @@ export default function Income() {
                   </div>
                   <strong>{inr(entry.amount)}</strong>
                   <button
+                    className="icon-button"
+                    aria-label={`Edit ${entry.source}`}
+                    title="Edit income"
+                    onClick={() => {
+                      setEditingIncomeId(entry._id);
+                      setForm({
+                        source: entry.source,
+                        amount: String(entry.amount),
+                        date: new Date(entry.date).toISOString().slice(0, 10),
+                      });
+                      setError('');
+                    }}
+                  >
+                    <Icon name="edit" />
+                  </button>
+                  <button
                     className="icon-button danger"
                     aria-label="Delete income"
-                    onClick={() => setDeleteConfirmation({
-                      title: 'Delete this income entry?',
-                      description: 'This will remove it from your income history.',
-                      confirmLabel: 'Delete income',
-                      onConfirm: () =>
-                        dispatch(removeIncome(entry._id))
-                          .unwrap()
-                          .then(() => {
-                            setDeleteConfirmation(null);
-                            setSelectedIncomeIds((current) => {
-                              const next = new Set(current);
-                              next.delete(entry._id);
-                              return next;
-                            });
-                            load();
-                          })
-                          .catch(() => setDeleteConfirmation(null)),
-                    })}
+                    onClick={() =>
+                      setDeleteConfirmation({
+                        title: 'Delete this income entry?',
+                        description: 'This will remove it from your income history.',
+                        confirmLabel: 'Delete income',
+                        onConfirm: () =>
+                          dispatch(removeIncome(entry._id))
+                            .unwrap()
+                            .then(() => {
+                              setDeleteConfirmation(null);
+                              setSelectedIncomeIds((current) => {
+                                const next = new Set(current);
+                                next.delete(entry._id);
+                                return next;
+                              });
+                              load();
+                            })
+                            .catch(() => setDeleteConfirmation(null)),
+                      })
+                    }
                   >
-                    <i className="bi bi-trash3" />
+                    <Icon name="delete" />
                   </button>
                 </div>
               ))}
             </div>
           ) : (
             <div className="finance-empty">
-              <i className="bi bi-cash-coin" />
+              <Icon name="coins" />
               <p>No income entries for this month yet.</p>
             </div>
           )}

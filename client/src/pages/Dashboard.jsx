@@ -1,21 +1,18 @@
 ﻿import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { Chart, registerables } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import { fetchSummary } from '../state/store';
 import ExpenseModal from '../components/ExpenseModal';
-import { getChartColors, getThemeAccent, getThemeAccentHover, inr, fmtDate } from '../utils';
-Chart.register(...registerables);
+import { inr, fmtDate } from '../utils';
+import Icon from '../theme/Icon';
+import { useChartTheme } from '../theme/chartTheme';
 export default function Dashboard() {
-  const colorTheme = useSelector((state) => state.colorTheme);
-  const appearance = useSelector((state) => state.theme);
-  const customAccent = useSelector((state) => state.customAccent);
+  const { chartColors, tokens, barRadius } = useChartTheme();
   const d = useDispatch(),
     { data: s, loading } = useSelector((x) => x.dash),
     [p, setP] = useState({ m: new Date().getMonth() + 1, y: new Date().getFullYear() }),
     [modal, setModal] = useState(null);
-  const chartColors = getChartColors(colorTheme, customAccent, appearance);
   const load = () => d(fetchSummary({ month: p.m, year: p.y }));
   useEffect(() => {
     load();
@@ -35,10 +32,10 @@ export default function Dashboard() {
     balance = s?.remainingBalance ?? income - expense,
     savingsRate = availableFunds ? Math.round((balance / availableFunds) * 100) : 0;
   const cards = [
-    ['Income this month', income, 'bi-arrow-down-left'],
-    ['Expenses this month', expense, 'bi-arrow-up-right'],
-    ['Remaining balance', balance, 'bi-wallet2'],
-    ['Savings rate', `${savingsRate}%`, 'bi-piggy-bank'],
+    ['Income this month', income, 'incoming'],
+    ['Expenses this month', expense, 'outgoing'],
+    ['Remaining balance', balance, 'wallet'],
+    ['Savings rate', `${savingsRate}%`, 'savings'],
   ];
   return (
     <>
@@ -49,7 +46,7 @@ export default function Dashboard() {
           <p className="muted">A little clarity goes a long way.</p>
         </div>
         <button className="btn btn-primary add-button" onClick={() => setModal({})}>
-          <i className="bi bi-plus-lg" /> Add expense
+          <Icon name="add" /> Add expense
         </button>
       </div>
       <div className="period-bar dashboard-period">
@@ -61,10 +58,10 @@ export default function Dashboard() {
         </div>
         <div className="period-controls">
           <button className="btn btn-light" onClick={() => shift(-1)} aria-label="Previous month">
-            <i className="bi bi-chevron-left" />
+            <Icon name="chevronLeft" />
           </button>
           <button className="btn btn-light" onClick={() => shift(1)} aria-label="Next month">
-            <i className="bi bi-chevron-right" />
+            <Icon name="chevronRight" />
           </button>
         </div>
       </div>
@@ -80,7 +77,7 @@ export default function Dashboard() {
                 <div className={'metric-card dashboard-metric metric-' + i}>
                   <div className="metric-top">
                     <span>{t}</span>
-                    <i className={'bi ' + icon} />
+                    <Icon name={icon} />
                   </div>
                   <strong>{i === 3 ? v : inr(v)}</strong>
                   <small>
@@ -113,7 +110,7 @@ export default function Dashboard() {
                       labels: Array.from({ length: dim }, (_, i) => i + 1),
                       datasets: [
                         {
-                          label: 'â‚¹',
+                          label: '₹',
                           data: Array.from(
                             { length: dim },
                             (_, i) =>
@@ -121,9 +118,9 @@ export default function Dashboard() {
                                 `${p.y}-${String(p.m).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`
                               ] || 0,
                           ),
-                          backgroundColor: getThemeAccent(colorTheme, appearance, customAccent),
-                          hoverBackgroundColor: getThemeAccentHover(colorTheme, appearance, customAccent),
-                          borderRadius: 5,
+                          backgroundColor: tokens['--primary'],
+                          hoverBackgroundColor: tokens['--primary-dark'],
+                          borderRadius: barRadius,
                           maxBarThickness: 22,
                         },
                       ],
@@ -135,8 +132,8 @@ export default function Dashboard() {
                         x: { grid: { display: false }, ticks: { maxTicksLimit: 16 } },
                         y: {
                           beginAtZero: true,
-                          grid: { color: 'rgba(90,100,90,.1)' },
-                          ticks: { callback: (v) => 'â‚¹' + v },
+                          grid: { color: tokens['--scene-grid'] },
+                          ticks: { callback: (v) => '₹' + v },
                         },
                       },
                     }}
@@ -163,7 +160,7 @@ export default function Dashboard() {
                               data: items.map((c) => c.total),
                               backgroundColor: chartColors,
                               borderWidth: 3,
-                              borderColor: 'var(--panel)',
+                              borderColor: tokens['--panel-solid'],
                               hoverOffset: 5,
                             },
                           ],
@@ -202,7 +199,7 @@ export default function Dashboard() {
                     <h4>Recent expenses</h4>
                   </div>
                   <Link className="text-link" to="/expenses">
-                    See all <i className="bi bi-arrow-up-right" />
+                    See all <Icon name="outgoing" />
                   </Link>
                 </div>
                 {s?.recentExpenses.length ? (
@@ -213,7 +210,7 @@ export default function Dashboard() {
                           <tr key={e._id}>
                             <td>
                               <span className="expense-icon">
-                                <i className="bi bi-bag" />
+                                <Icon name="shopping" />
                               </span>
                             </td>
                             <td>

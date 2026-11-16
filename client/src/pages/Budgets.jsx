@@ -4,7 +4,7 @@ import { fetchBudgets, saveBudget } from '../state/store';
 import { inr, today } from '../utils';
 import CalendarInput from '../components/CalendarInput';
 import AmountInput from '../components/AmountInput';
-
+import Icon from '../theme/Icon';
 export default function Budgets() {
   const dispatch = useDispatch();
   const { data: budgets, loading } = useSelector((state) => state.budgets);
@@ -144,7 +144,7 @@ export default function Budgets() {
             </>
           ) : (
             <div className="finance-empty">
-              <i className="bi bi-speedometer2" />
+              <Icon name="budgets" />
               <p>Set a limit to start tracking this month's budget.</p>
             </div>
           )}
